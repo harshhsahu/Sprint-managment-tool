@@ -1,0 +1,137 @@
+"use client";
+
+import { ReactNode, useEffect, useRef } from "react";
+import { X } from "lucide-react";
+import { cn, initials } from "@/lib/utils";
+import { PRIORITY_META, TYPE_META, type Priority, type TaskType } from "@/lib/constants";
+import { Zap, Bookmark, CheckSquare, Bug, Search, TrendingUp, GitBranch } from "lucide-react";
+
+/* ------------------------------ Avatar ------------------------------ */
+export function Avatar({
+  user,
+  size = 24,
+}: {
+  user?: { name?: string; avatarColor?: string } | null;
+  size?: number;
+}) {
+  if (!user?.name) {
+    return (
+      <span
+        className="inline-flex items-center justify-center rounded-full bg-line text-muted shrink-0"
+        style={{ width: size, height: size, fontSize: size * 0.4 }}
+        title="Unassigned"
+      >
+        ?
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded-full text-white font-semibold shrink-0"
+      style={{ width: size, height: size, fontSize: size * 0.38, background: user.avatarColor || "#64748b" }}
+      title={user.name}
+    >
+      {initials(user.name)}
+    </span>
+  );
+}
+
+/* --------------------------- Type & priority ------------------------ */
+const TYPE_ICONS = { Zap, Bookmark, CheckSquare, Bug, Search, TrendingUp, GitBranch };
+
+export function TypeIcon({ type, size = 14 }: { type: TaskType; size?: number }) {
+  const meta = TYPE_META[type] || TYPE_META.task;
+  const Icon = TYPE_ICONS[meta.icon as keyof typeof TYPE_ICONS] || CheckSquare;
+  return (
+    <span
+      className="inline-flex items-center justify-center rounded shrink-0"
+      style={{ width: size + 6, height: size + 6, background: meta.color }}
+      title={meta.label}
+    >
+      <Icon size={size - 2} color="white" strokeWidth={2.5} />
+    </span>
+  );
+}
+
+export function PriorityBadge({ priority, compact }: { priority: Priority; compact?: boolean }) {
+  const meta = PRIORITY_META[priority] || PRIORITY_META.medium;
+  return (
+    <span className="chip" style={{ background: `${meta.color}22`, color: meta.color }} title={`Priority: ${meta.label}`}>
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: meta.color }} />
+      {!compact && meta.label}
+    </span>
+  );
+}
+
+export function StatusBadge({ status, statuses }: { status: string; statuses?: { id: string; name: string; color: string }[] }) {
+  const s = statuses?.find((x) => x.id === status);
+  return (
+    <span className="chip" style={{ background: `${s?.color || "#64748b"}22`, color: s?.color || "#64748b" }}>
+      {s?.name || status}
+    </span>
+  );
+}
+
+/* ------------------------------ Modal ------------------------------- */
+export function Modal({
+  open,
+  onClose,
+  title,
+  children,
+  wide,
+}: {
+  open: boolean;
+  onClose: () => void;
+  title?: ReactNode;
+  children: ReactNode;
+  wide?: boolean;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 p-4 pt-[6vh] overflow-y-auto"
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div ref={ref} className={cn("card w-full shadow-2xl", wide ? "max-w-4xl" : "max-w-lg")} role="dialog" aria-modal="true">
+        {title !== undefined && (
+          <div className="flex items-center justify-between border-b border-line px-5 py-3">
+            <div className="font-semibold text-sm">{title}</div>
+            <button onClick={onClose} className="text-muted hover:text-foreground cursor-pointer" aria-label="Close">
+              <X size={18} />
+            </button>
+          </div>
+        )}
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+/* ----------------------------- Spinner ------------------------------ */
+export function Spinner({ label }: { label?: string }) {
+  return (
+    <div className="flex items-center justify-center gap-2 py-10 text-muted text-sm">
+      <span className="h-4 w-4 animate-spin rounded-full border-2 border-line border-t-accent" />
+      {label || "Loading…"}
+    </div>
+  );
+}
+
+export function EmptyState({ icon, title, hint, action }: { icon?: ReactNode; title: string; hint?: string; action?: ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-2 py-14 text-center">
+      {icon && <div className="text-muted/50">{icon}</div>}
+      <div className="font-medium">{title}</div>
+      {hint && <div className="text-sm text-muted max-w-sm">{hint}</div>}
+      {action && <div className="mt-2">{action}</div>}
+    </div>
+  );
+}

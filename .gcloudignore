@@ -1,0 +1,14 @@
+# Files not uploaded to Cloud Build / Cloud Run
+.git
+.gitignore
+node_modules
+.next
+README.md
+.env
+.env.*
+!.env.example
+.DS_Store
+coverage
+.vercel
+*.tsbuildinfo
+.claude

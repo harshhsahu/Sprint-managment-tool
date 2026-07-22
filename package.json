@@ -1,17 +1,27 @@
 {
-  "name": "sprint-app",
+  "name": "sprint-management",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed": "node --env-file=.env.local scripts/seed.mjs"
   },
   "dependencies": {
+    "@hello-pangea/dnd": "^18.0.1",
+    "bcryptjs": "^3.0.3",
+    "date-fns": "^4.4.0",
+    "jose": "^6.2.4",
+    "lucide-react": "^1.25.0",
+    "mongoose": "^9.8.0",
     "next": "16.2.11",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "recharts": "^3.10.0",
+    "swr": "^2.4.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

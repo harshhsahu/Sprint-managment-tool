@@ -1,0 +1,245 @@
+import mongoose, { Schema, model, models, Types } from "mongoose";
+
+/* ------------------------------ User ------------------------------ */
+const UserSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
+    passwordHash: { type: String, required: true },
+    role: { type: String, enum: ["super_admin", "member"], default: "member" },
+    designation: { type: String, default: "" },
+    timezone: { type: String, default: "UTC" },
+    avatarColor: { type: String, default: "" },
+    active: { type: Boolean, default: true },
+    resetToken: { type: String, default: null },
+    resetTokenExpiry: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
+/* ---------------------------- Workspace --------------------------- */
+const WorkspaceMemberSchema = new Schema(
+  {
+    user: { type: Types.ObjectId, ref: "User", required: true },
+    role: { type: String, enum: ["workspace_admin", "member"], default: "member" },
+  },
+  { _id: false }
+);
+
+const WorkspaceSchema = new Schema(
+  {
+    name: { type: String, required: true, trim: true },
+    description: { type: String, default: "" },
+    owner: { type: Types.ObjectId, ref: "User", required: true },
+    members: [WorkspaceMemberSchema],
+  },
+  { timestamps: true }
+);
+
+/* ----------------------------- Project ---------------------------- */
+const ProjectMemberSchema = new Schema(
+  {
+    user: { type: Types.ObjectId, ref: "User", required: true },
+    role: {
+      type: String,
+      enum: ["project_admin", "team_lead", "developer", "qa", "viewer"],
+      default: "developer",
+    },
+  },
+  { _id: false }
+);
+
+const StatusSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    color: { type: String, default: "#64748b" },
+    category: { type: String, enum: ["todo", "in_progress", "done"], default: "todo" },
+    order: { type: Number, default: 0 },
+    wipLimit: { type: Number, default: 0 }, // 0 = no limit
+  },
+  { _id: false }
+);
+
+const LabelSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    color: { type: String, default: "#3b82f6" },
+  },
+  { _id: false }
+);
+
+const ProjectSchema = new Schema(
+  {
+    workspace: { type: Types.ObjectId, ref: "Workspace", required: true, index: true },
+    name: { type: String, required: true, trim: true },
+    key: { type: String, required: true, uppercase: true, trim: true },
+    description: { type: String, default: "" },
+    lead: { type: Types.ObjectId, ref: "User" },
+    members: [ProjectMemberSchema],
+    statuses: [StatusSchema],
+    labels: [LabelSchema],
+    taskCounter: { type: Number, default: 0 },
+    archived: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+ProjectSchema.index({ workspace: 1, key: 1 }, { unique: true });
+
+/* ----------------------------- Sprint ----------------------------- */
+const SprintSchema = new Schema(
+  {
+    project: { type: Types.ObjectId, ref: "Project", required: true, index: true },
+    name: { type: String, required: true },
+    goal: { type: String, default: "" },
+    status: { type: String, enum: ["planned", "active", "completed", "archived"], default: "planned" },
+    startDate: { type: Date },
+    endDate: { type: Date },
+    capacity: { type: Number, default: 0 }, // story points the team can take
+    completedAt: { type: Date },
+    // snapshot metrics captured on completion
+    committedPoints: { type: Number, default: 0 },
+    completedPoints: { type: Number, default: 0 },
+  },
+  { timestamps: true }
+);
+
+/* ------------------------------ Task ------------------------------ */
+const TaskSchema = new Schema(
+  {
+    project: { type: Types.ObjectId, ref: "Project", required: true, index: true },
+    key: { type: String, required: true, index: true }, // e.g. PROJ-42
+    title: { type: String, required: true, trim: true },
+    description: { type: String, default: "" }, // rich text (HTML)
+    type: {
+      type: String,
+      enum: ["epic", "story", "task", "bug", "spike", "improvement", "subtask"],
+      default: "task",
+    },
+    status: { type: String, default: "backlog", index: true },
+    priority: {
+      type: String,
+      enum: ["highest", "high", "medium", "low", "lowest"],
+      default: "medium",
+      index: true,
+    },
+    assignee: { type: Types.ObjectId, ref: "User", default: null, index: true },
+    reporter: { type: Types.ObjectId, ref: "User", required: true },
+    sprint: { type: Types.ObjectId, ref: "Sprint", default: null, index: true },
+    epic: { type: Types.ObjectId, ref: "Task", default: null }, // parent epic
+    parentTask: { type: Types.ObjectId, ref: "Task", default: null }, // for subtasks
+    storyPoints: { type: Number, default: null },
+    labels: [{ type: String }], // label ids from project.labels
+    dueDate: { type: Date, default: null },
+    watchers: [{ type: Types.ObjectId, ref: "User" }],
+    dependencies: [{ type: Types.ObjectId, ref: "Task" }], // blocked by
+    order: { type: Number, default: 0 }, // position within status column / backlog
+    archived: { type: Boolean, default: false, index: true },
+    completedAt: { type: Date, default: null },
+    startedAt: { type: Date, default: null },
+    attachments: [
+      {
+        name: String,
+        url: String,
+        size: Number,
+        uploadedBy: { type: Types.ObjectId, ref: "User" },
+        uploadedAt: { type: Date, default: Date.now },
+      },
+    ],
+  },
+  { timestamps: true }
+);
+TaskSchema.index({ project: 1, key: 1 }, { unique: true });
+TaskSchema.index({ title: "text", description: "text", key: "text" });
+
+/* ----------------------------- Comment ---------------------------- */
+const CommentSchema = new Schema(
+  {
+    task: { type: Types.ObjectId, ref: "Task", required: true, index: true },
+    author: { type: Types.ObjectId, ref: "User", required: true },
+    body: { type: String, required: true },
+    mentions: [{ type: Types.ObjectId, ref: "User" }],
+  },
+  { timestamps: true }
+);
+
+/* ----------------------------- Activity --------------------------- */
+const ActivitySchema = new Schema(
+  {
+    project: { type: Types.ObjectId, ref: "Project", index: true },
+    workspace: { type: Types.ObjectId, ref: "Workspace", index: true },
+    task: { type: Types.ObjectId, ref: "Task", index: true, default: null },
+    sprint: { type: Types.ObjectId, ref: "Sprint", default: null },
+    user: { type: Types.ObjectId, ref: "User", required: true },
+    action: { type: String, required: true }, // e.g. task.created, task.status_changed
+    detail: { type: String, default: "" },
+    meta: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: true }
+);
+ActivitySchema.index({ createdAt: -1 });
+
+/* --------------------------- Notification ------------------------- */
+const NotificationSchema = new Schema(
+  {
+    user: { type: Types.ObjectId, ref: "User", required: true, index: true },
+    type: {
+      type: String,
+      enum: ["assignment", "mention", "comment", "status_change", "sprint", "due_date", "invite"],
+      required: true,
+    },
+    title: { type: String, required: true },
+    body: { type: String, default: "" },
+    link: { type: String, default: "" },
+    read: { type: Boolean, default: false, index: true },
+    actor: { type: Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+
+/* --------------------------- SavedFilter -------------------------- */
+const SavedFilterSchema = new Schema(
+  {
+    user: { type: Types.ObjectId, ref: "User", required: true, index: true },
+    project: { type: Types.ObjectId, ref: "Project", default: null },
+    name: { type: String, required: true },
+    filters: { type: Schema.Types.Mixed, default: {} },
+  },
+  { timestamps: true }
+);
+
+/* ---------------------------- Dashboard --------------------------- */
+const DashboardSchema = new Schema(
+  {
+    user: { type: Types.ObjectId, ref: "User", required: true, index: true },
+    name: { type: String, required: true },
+    isDefault: { type: Boolean, default: false },
+    widgets: [
+      new Schema(
+        {
+          id: String,
+          // assigned_to_me | sprint_progress | recent_activity | by_status | by_priority | by_assignee | open_vs_closed | upcoming_deadlines | team_workload
+          type: { type: String },
+          w: { type: Number, default: 1 }, // grid width units (1-2)
+          project: { type: Types.ObjectId, ref: "Project", default: null },
+        },
+        { _id: false }
+      ),
+    ],
+  },
+  { timestamps: true }
+);
+
+export const User = models.User || model("User", UserSchema);
+export const Workspace = models.Workspace || model("Workspace", WorkspaceSchema);
+export const Project = models.Project || model("Project", ProjectSchema);
+export const Sprint = models.Sprint || model("Sprint", SprintSchema);
+export const Task = models.Task || model("Task", TaskSchema);
+export const Comment = models.Comment || model("Comment", CommentSchema);
+export const Activity = models.Activity || model("Activity", ActivitySchema);
+export const Notification = models.Notification || model("Notification", NotificationSchema);
+export const SavedFilter = models.SavedFilter || model("SavedFilter", SavedFilterSchema);
+export const Dashboard = models.Dashboard || model("Dashboard", DashboardSchema);
+
+export { mongoose };
