@@ -9,7 +9,7 @@ import { fetcher, api } from "@/lib/client";
 import { Spinner, Avatar } from "@/components/ui";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
 import { useApp } from "@/components/AppShell";
-import { PROJECT_ROLES, ROLE_LABELS, STATUS_CATEGORIES } from "@/lib/constants";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, STATUS_CATEGORIES, OPTIONAL_TASK_FIELDS, CUSTOM_FIELD_TYPES } from "@/lib/constants";
 
 export default function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
@@ -18,9 +18,11 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const { refresh } = useApp();
   const [statuses, setStatuses] = useState<Any[]>([]);
   const [labels, setLabels] = useState<Any[]>([]);
+  const [hiddenFields, setHiddenFields] = useState<string[]>([]);
+  const [customFields, setCustomFields] = useState<Any[]>([]);
   const [info, setInfo] = useState({ name: "", description: "" });
   const [addUserId, setAddUserId] = useState("");
-  const [addRole, setAddRole] = useState("developer");
+  const [addRole, setAddRole] = useState("editor");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
@@ -33,6 +35,8 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatuses(project.statuses.map((s: Any) => ({ ...s })));
       setLabels(project.labels.map((l: Any) => ({ ...l })));
+      setHiddenFields([...(project.hiddenFields || [])]);
+      setCustomFields((project.customFields || []).map((f: Any) => ({ ...f })));
       setInfo({ name: project.name, description: project.description || "" });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -75,12 +79,17 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
 
   if (!project) return <Spinner label="Loading settings…" />;
 
-  const memberIds = new Set((project.members || []).map((m: Any) => m.user?._id));
-  const candidates = (usersData?.users || []).filter((u: Any) => !memberIds.has(u._id));
-  const roleOptions: { id: string; name: string }[] = [
-    ...PROJECT_ROLES.map((r) => ({ id: r, name: ROLE_LABELS[r] })),
-    ...((project.workspace?.customRoles || []) as Any[]).map((r) => ({ id: r.id, name: `${r.name} (custom)` })),
+  // Everyone in the workspace already has access to this project (read-only here —
+  // managed at the workspace level). Project "guests" are users outside the workspace.
+  const wsOwner = project.workspace?.owner;
+  const workspacePeople: Any[] = [
+    ...(wsOwner ? [{ user: wsOwner, role: "owner" }] : []),
+    ...((project.workspace?.members || []) as Any[]).filter((m) => m.user?._id !== wsOwner?._id),
   ];
+  const wsUserIds = new Set(workspacePeople.map((m) => m.user?._id));
+  const guests = (project.members || []) as Any[];
+  const guestIds = new Set(guests.map((m) => m.user?._id));
+  const candidates = (usersData?.users || []).filter((u: Any) => !wsUserIds.has(u._id) && !guestIds.has(u._id));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-5 pb-16">
@@ -99,23 +108,43 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
         </div>
       </section>
 
-      {/* members */}
+      {/* team via workspace (read-only) */}
       <section className="card p-5">
-        <h2 className="mb-3 font-semibold">Members & roles</h2>
+        <h2 className="mb-1 font-semibold">Team access</h2>
+        <p className="mb-3 text-xs text-muted">Everyone in the <b>{project.workspace?.name}</b> workspace has access to this project at their workspace role. Manage them from <span className="font-medium">Workspaces → Members</span>.</p>
+        <div className="space-y-2">
+          {workspacePeople.map((m: Any) => (
+            <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
+              <Avatar user={m.user} size={26} />
+              <div className="min-w-0">
+                <div className="truncate text-sm font-medium">{m.user?.name} {!m.user?.active && <span className="text-xs text-red-500">(deactivated)</span>}</div>
+                <div className="truncate text-xs text-muted">{m.user?.designation || m.user?.email}</div>
+              </div>
+              <span className="ml-auto chip bg-accent/15 text-accent">{ROLE_LABELS[m.role] || m.role}</span>
+            </div>
+          ))}
+          {workspacePeople.length === 0 && <p className="text-sm text-muted">No workspace members.</p>}
+        </div>
+      </section>
+
+      {/* project guests */}
+      <section className="card p-5">
+        <h2 className="mb-1 font-semibold">Project guests</h2>
+        <p className="mb-3 text-xs text-muted">Give someone outside the workspace access to <b>this project only</b>.</p>
         {canManageMembers && (
           <div className="mb-4 flex flex-wrap gap-2">
             <select className="input !w-64" value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
-              <option value="">Add a user…</option>
+              <option value="">Add a guest…</option>
               {candidates.map((u: Any) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
             </select>
-            <select className="input !w-40" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
-              {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+            <select className="input !w-32" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+              {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
             <button className="btn-primary" onClick={addMember} disabled={!addUserId}><Plus size={14} /> Add</button>
           </div>
         )}
         <div className="space-y-2">
-          {(project.members || []).map((m: Any) => (
+          {guests.map((m: Any) => (
             <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
               <Avatar user={m.user} size={26} />
               <div className="min-w-0">
@@ -128,8 +157,8 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
                 disabled={!canManageMembers}
                 onChange={async (e) => { await api(`/api/projects/${projectId}/members`, "PATCH", { userId: m.user._id, role: e.target.value }); mutate(); }}
               >
-                {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                {!roleOptions.some((r) => r.id === m.role) && <option value={m.role}>{m.role}</option>}
+                {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                {!(ASSIGNABLE_ROLES as readonly string[]).includes(m.role) && <option value={m.role}>{m.role}</option>}
               </select>
               {canManageMembers && (
                 <button className="text-xs text-red-500 hover:underline" onClick={async () => { await api(`/api/projects/${projectId}/members?userId=${m.user._id}`, "DELETE"); mutate(); }}>
@@ -138,6 +167,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
               )}
             </div>
           ))}
+          {guests.length === 0 && <p className="text-sm text-muted">No project guests.</p>}
         </div>
       </section>
 
@@ -213,6 +243,57 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
             <button className="btn-primary" onClick={() => save({ labels }, "Labels saved")}>Save labels</button>
           </div>
         )}
+      </section>
+
+      {/* task fields */}
+      <section className="card p-5">
+        <h2 className="mb-1 font-semibold">Task fields</h2>
+        <p className="mb-3 text-xs text-muted">Choose which built-in fields appear on tasks, and add your own (e.g. an ETA date).</p>
+
+        <div className="mb-4">
+          <div className="mb-2 text-xs font-semibold uppercase text-muted">Built-in fields</div>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            {OPTIONAL_TASK_FIELDS.map((f) => (
+              <label key={f.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  disabled={!isAdmin}
+                  checked={!hiddenFields.includes(f.id)}
+                  onChange={(e) =>
+                    setHiddenFields(e.target.checked ? hiddenFields.filter((x) => x !== f.id) : [...hiddenFields, f.id])
+                  }
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-xs font-semibold uppercase text-muted">Custom fields</div>
+          <div className="space-y-2">
+            {customFields.map((f, i) => (
+              <div key={f.id} className="flex items-center gap-2">
+                <input className="input !w-52 !py-1 text-sm" disabled={!isAdmin} placeholder="Field name (e.g. ETA)" value={f.name}
+                  onChange={(e) => setCustomFields(customFields.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))} />
+                <select className="input !w-32 !py-1 text-xs" disabled={!isAdmin} value={f.type}
+                  onChange={(e) => setCustomFields(customFields.map((x, xi) => (xi === i ? { ...x, type: e.target.value } : x)))}>
+                  {CUSTOM_FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+                {isAdmin && <button className="text-red-500" onClick={() => setCustomFields(customFields.filter((_, xi) => xi !== i))}><Trash2 size={14} /></button>}
+              </div>
+            ))}
+            {customFields.length === 0 && <p className="text-sm text-muted">No custom fields.</p>}
+          </div>
+          {isAdmin && (
+            <div className="mt-3 flex gap-2">
+              <button className="btn-ghost" onClick={() => setCustomFields([...customFields, { id: `cf_${Date.now().toString(36)}_${customFields.length}`, name: "New field", type: "text" }])}>
+                <Plus size={14} /> Add field
+              </button>
+              <button className="btn-primary" onClick={() => save({ hiddenFields, customFields: customFields.filter((f) => f.name.trim()) }, "Task fields saved")}>Save fields</button>
+            </div>
+          )}
+        </div>
       </section>
 
       {/* danger zone */}

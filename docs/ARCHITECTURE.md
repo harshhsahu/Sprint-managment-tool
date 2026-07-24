@@ -1,8 +1,8 @@
-# System Architecture — SprintBoard
+# System Architecture — Kanbo
 
 ## Overview
 
-SprintBoard is a transactional agile task-management app (Jira/Linear-style) built on
+Kanbo is a transactional agile task-management app (Jira/Linear-style) built on
 Next.js 16 (App Router) with a single MongoDB datastore accessed through Mongoose. The
 browser talks only to `/api/**` route handlers; those handlers authenticate the request,
 enforce capability-based permissions, validate the body with zod, and read/write MongoDB.

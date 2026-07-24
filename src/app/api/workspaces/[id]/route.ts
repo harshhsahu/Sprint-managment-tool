@@ -1,8 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Workspace, Project, Task, Sprint } from "@/models";
-import { getWorkspaceRole } from "@/lib/permissions";
-import { CAPABILITIES } from "@/lib/constants";
+import { getWorkspaceRole, isWorkspaceManager } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -22,16 +21,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 const patchSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   description: z.string().max(500).optional(),
-  customRoles: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(40),
-        name: z.string().min(1).max(40),
-        capabilities: z.array(z.enum(CAPABILITIES)),
-      })
-    )
-    .max(20)
-    .optional(),
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -40,7 +29,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
 
   const role = await getWorkspaceRole(user, id);
-  if (role !== "workspace_admin") return error("Only workspace admins can edit the workspace", 403);
+  if (!isWorkspaceManager(role)) return error("Only workspace owners and admins can edit the workspace", 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;

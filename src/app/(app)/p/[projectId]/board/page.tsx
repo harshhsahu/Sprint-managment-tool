@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useMemo, useState, useEffect } from "react";
+import { use, useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import useSWR from "swr";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
@@ -17,13 +17,23 @@ import { cn } from "@/lib/utils";
 function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: string; status: string; sprintId?: string | null; onCreated: () => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [busy, setBusy] = useState(false);
+  const ref = useRef<HTMLTextAreaElement>(null);
+
+  // Create the task and keep the box open (cleared + focused) so you can rapidly add more.
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    if (!title.trim()) return;
-    await api("/api/tasks", "POST", { project: projectId, title: title.trim(), status, sprint: sprintId || null });
-    setTitle("");
-    setOpen(false);
-    onCreated();
+    const value = title.trim();
+    if (!value || busy) return;
+    setBusy(true);
+    try {
+      await api("/api/tasks", "POST", { project: projectId, title: value, status, sprint: sprintId || null });
+      setTitle("");
+      onCreated();
+      ref.current?.focus(); // stay in "add mode" for the next task
+    } finally {
+      setBusy(false);
+    }
   }
   if (!open) {
     return (
@@ -35,8 +45,9 @@ function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: st
   return (
     <form onSubmit={submit}>
       <textarea
+        ref={ref}
         className="input !py-1.5 text-sm"
-        placeholder="What needs to be done?"
+        placeholder="What needs to be done? Enter to add, Esc to close"
         value={title}
         autoFocus
         onChange={(e) => setTitle(e.target.value)}

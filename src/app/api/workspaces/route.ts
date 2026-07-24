@@ -10,7 +10,7 @@ export async function GET() {
   const filter = { $or: [{ owner: user!._id }, { "members.user": user!._id }] };
   const workspaces = await Workspace.find(filter)
     .populate("owner", "name email avatarColor")
-    .populate("members.user", "name email avatarColor designation")
+    .populate("members.user", "name email avatarColor designation active")
     .sort({ createdAt: 1 });
   return json({ workspaces });
 }
@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     name: data.name,
     description: data.description || "",
     owner: user!._id,
-    members: [{ user: user!._id, role: "workspace_admin" }],
+    members: [{ user: user!._id, role: "owner" }],
   });
 
   await logActivity({

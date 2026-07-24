@@ -1,7 +1,7 @@
 # 00 Project Overview
 
 ## Name
-SprintBoard — Agile Task Management
+Kanbo — Agile Task Management
 
 ## Summary
 A modern, production-ready agile task-management app for software teams, inspired by Jira

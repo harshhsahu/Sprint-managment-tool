@@ -1,29 +1,28 @@
 # 03 User Personas
 
-## Engineering Manager / Workspace Admin
-- **Role:** owns a workspace, creates projects, manages members and custom roles.
+> Access uses one role set — **owner / admin / editor / viewer** — applied at the workspace
+> level (grants access to all projects) or as a per-project guest.
+
+## Owner (workspace creator)
+- **Role:** owns a workspace, creates projects, manages members, controls everything.
 - **Goals:** keep teams organized, see cross-project health, control access.
-- **Pain points:** access sprawl, not knowing who's overloaded, tool admin overhead.
-- **How this product helps:** workspaces, capability-based roles, dashboards, workload widgets.
-- **Access level:** `workspace_admin` (workspace) → `project_admin` on its projects.
+- **How this product helps:** workspaces, dashboards, workload widgets, full settings.
+- **Access level:** `owner` — every capability, incl. deleting the workspace/project.
 
-## Team Lead / Scrum Master
-- **Role:** runs sprints for a project.
-- **Goals:** plan the backlog, start/complete sprints, track burndown and velocity.
-- **Pain points:** manual sprint bookkeeping, scope creep, stale tasks.
-- **How this product helps:** backlog planning, sprint lifecycle, velocity/burndown/aging reports.
-- **Access level:** `team_lead` — `sprint:manage` + all task capabilities.
+## Admin
+- **Role:** runs the workspace/projects day to day — members, settings, sprints.
+- **Goals:** plan sprints, manage the team, keep projects configured.
+- **How this product helps:** member management, sprint lifecycle, all reports.
+- **Access level:** `admin` — everything except deleting the workspace (owner-only).
 
-## Developer / QA
+## Editor (developer / QA)
 - **Role:** does the work — picks up tasks, moves them across the board, comments.
-- **Goals:** see what's assigned, update status quickly, raise/close bugs.
-- **Pain points:** slow UIs, too many clicks to update a task.
+- **Goals:** update status quickly, raise/close bugs, collaborate.
 - **How this product helps:** Kanban DnD, inline edit, quick create, My Tasks, @mentions.
-- **Access level:** `developer` / `qa` — create/edit/comment on tasks (no delete, no settings).
+- **Access level:** `editor` — create/edit/comment on tasks (no delete, no sprint/settings).
 
-## Stakeholder / Viewer
+## Viewer (stakeholder)
 - **Role:** watches progress without changing anything.
 - **Goals:** understand status, upcoming deadlines, sprint progress.
-- **Pain points:** being handed screenshots instead of a live view.
-- **How this product helps:** read-only access, dashboards, reports.
+- **How this product helps:** read-only dashboards and reports.
 - **Access level:** `viewer` — `project:view` only.

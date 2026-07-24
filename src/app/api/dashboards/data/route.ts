@@ -6,15 +6,15 @@ export async function GET() {
   const { user, res } = await withAuth();
   if (res) return res;
 
-  // projects visible to this user (strict isolation): member/lead, or in a workspace they admin
+  // projects visible to this user: every project in a workspace they belong to,
+  // plus any project they guest on.
   const myWorkspaces = await Workspace.find({
-    $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+    $or: [{ owner: user!._id }, { "members.user": user!._id }],
   }).select("_id");
   const projFilter = {
     $or: [
-      { "members.user": user!._id },
-      { lead: user!._id },
       { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+      { "members.user": user!._id },
     ],
   };
   const projects = await Project.find({ ...projFilter, archived: { $ne: true } }).select("_id name key statuses");

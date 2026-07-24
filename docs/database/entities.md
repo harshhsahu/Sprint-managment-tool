@@ -25,9 +25,8 @@ All entities live in one MongoDB database, defined as Mongoose schemas in
 
 | Field | Type | Notes |
 |---|---|---|
-| `owner` | ObjectId→User | creator; always workspace admin |
-| `members[]` | `{ user, role }` | role: `workspace_admin` \| `member` |
-| `customRoles[]` | `{ id, name, capabilities[] }` | reusable project roles for this workspace |
+| `owner` | ObjectId→User | creator; always the owner (role can't be changed/removed) |
+| `members[]` | `{ user, role }` | role: `owner` \| `admin` \| `editor` \| `viewer`. A member has this role on **every project** in the workspace. |
 
 ## Entity: `Project`
 **Role:** a board/backlog under a workspace.
@@ -37,8 +36,8 @@ All entities live in one MongoDB database, defined as Mongoose schemas in
 | `workspace` | ObjectId→Workspace | indexed |
 | `key` | string (uppercase) | **task-key prefix**, e.g. `CC` → `CC-1`; unique per workspace |
 | `taskCounter` | number | monotonic counter for task numbering |
-| `lead` | ObjectId→User | implicit `project_admin` |
-| `members[]` | `{ user, role }` | role = built-in id **or** a workspace custom-role id |
+| `lead` | ObjectId→User | creator reference |
+| `members[]` | `{ user, role }` | **GUESTS only** — users NOT in the workspace, given single-project access. role: `admin` \| `editor` \| `viewer`. Workspace members are NOT stored here. |
 | `statuses[]` | `{ id, name, color, category, order, wipLimit }` | workflow columns; category ∈ todo/in_progress/done |
 | `labels[]` | `{ id, name, color }` | project labels |
 | `archived` | bool | |
@@ -108,5 +107,6 @@ There is a **single database**, so most references are real ObjectId links. Note
 - `Task.labels[]` and `Task.status` are **string ids** pointing into the parent
   `Project.labels[].id` / `Project.statuses[].id` — not DB references. If a status/label is
   removed in project settings, tasks are remapped in the API layer (status → first column).
-- `Project.members[].role` may be a **workspace custom-role id** (from
-  `Workspace.customRoles[].id`), resolved to capabilities at request time — not a DB join.
+- A user's project access is **computed**, not stored: if they're a `Workspace.members`
+  entry, that workspace role applies to every project — there is no matching
+  `Project.members` row. `Project.members` only holds guests (non-workspace users).

@@ -1,6 +1,6 @@
 # 24 Feature Flags
 
-SprintBoard does **not** use a feature-flag system in V1. Behavior is instead gated by:
+Kanbo does **not** use a feature-flag system in V1. Behavior is instead gated by:
 
 - **Capabilities** (RBAC) — what a user can do is controlled by their role's capability set,
   not by flags. See [13-security.md](13-security.md).

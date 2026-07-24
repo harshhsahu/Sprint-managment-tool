@@ -1,4 +1,4 @@
-# AI Agent Guidelines (SprintBoard)
+# AI Agent Guidelines (Kanbo)
 
 Rules and heuristics for AI coding agents working in the `sprint-management` repository.
 Read this carefully before generating or modifying any code. These rules override
@@ -9,7 +9,7 @@ default agent behavior.
 
 ## 1. Architecture / Integration Phase
 
-SprintBoard is a **fully-integrated transactional CRUD app** over a single MongoDB
+Kanbo is a **fully-integrated transactional CRUD app** over a single MongoDB
 database (via Mongoose). There is no mock layer and no multi-backend aggregation.
 
 - UI components (client) fetch through the API layer only, using SWR against `/api/**`.
@@ -43,27 +43,33 @@ One approved library per concern. Adding a second is a review-blocking change.
 - **Validation:** `zod` for every API request body.
 - **Auth/crypto:** `jose` (JWT) + `bcryptjs` (password hashing).
 
-## 4. Permissions Are Capability-Based
+## 4. Roles & Capabilities
 
-Access control resolves a member's project role (built-in **or** a workspace custom role)
-to a set of capabilities. **Enforce with `can()` / `getCapabilities()`**, not role-name
-string checks.
+One role set — **owner > admin > editor > viewer** — is used at both the workspace and
+project level (see [`src/lib/constants.ts`](../src/lib/constants.ts)):
 
-- Capabilities: `project:view`, `task:create`, `task:edit`, `task:delete`,
-  `task:comment`, `sprint:manage`, `member:manage`, `project:manage`.
-- Every mutating API route MUST check the specific capability, e.g.
-  `if (!(await can(user, projectId, "task:edit"))) return error("…", 403)`.
-- Client UI gates on `myCapabilities` (returned by the project/task GET routes), never on
-  role name — custom roles won't match a hard-coded `"project_admin"`.
-- See [`13-security.md`](13-security.md) and [`src/lib/permissions.ts`](../src/lib/permissions.ts).
+- **owner**: full control incl. deleting the workspace/project (the creator).
+- **admin**: manage members, settings, sprints, and all task actions.
+- **editor**: create / edit / comment on tasks (NO delete, NO sprint management).
+- **viewer**: read-only.
 
-## 5. Visibility Is Strictly Scoped
+Roles resolve to capabilities (`project:view`, `task:create|edit|delete|comment`,
+`sprint:manage`, `member:manage`, `project:manage`). **Enforce with `can()` /
+`getCapabilities()`**, never role-name string checks. Client UI gates on `myCapabilities`
+(returned by the project/task GET routes). There is no custom-role builder — the four
+roles are the whole set.
 
-A user may only reach a workspace/project they own or belong to. `super_admin` is a
-**global** role for the user-administration page only — it does NOT grant visibility into
-other users' workspaces. Every list query (`workspaces`, `projects`, `tasks`, `search`,
-`dashboards/data`, `activity`) filters by ownership/membership. Do not reintroduce a
-"super admin sees everything" branch.
+## 5. Access Model (workspace grants all projects)
+
+- A **workspace member** (owner/admin/editor/viewer) automatically has that role on
+  **every project** in the workspace. Do NOT copy them into `project.members`.
+- `project.members` holds only **guests** — users NOT in the workspace who were given
+  access to a single project (role admin/editor/viewer).
+- `getProjectRole` = workspace role (if a workspace member) ELSE the project-guest role.
+- Visibility is scoped: users only reach workspaces/projects they belong to. `super_admin`
+  is a **global** role for the user-administration page only — it does NOT grant access to
+  other users' workspaces. Every list query filters by workspace membership + guest
+  entries. See [`13-security.md`](13-security.md) and [`modules/04-roles-permissions.md`](modules/04-roles-permissions.md).
 
 ## 6. Error Handling (single DB, not fail-soft-to-null)
 

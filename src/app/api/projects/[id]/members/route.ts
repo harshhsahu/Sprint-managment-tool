@@ -2,22 +2,20 @@ import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Project, User, Workspace } from "@/models";
 import { can } from "@/lib/permissions";
-import { PROJECT_ROLES, ROLE_LABELS } from "@/lib/constants";
+import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/constants";
 
-/** A role is valid if it is a built-in project role or a custom role defined
-    on the project's workspace. */
-async function isValidRole(workspaceId: string, role: string): Promise<boolean> {
-  if ((PROJECT_ROLES as readonly string[]).includes(role)) return true;
-  const ws = await Workspace.findById(workspaceId).select("customRoles");
+/** Project members here are GUESTS: users NOT in the workspace, given access to a
+    single project. Workspace members already have access and are managed at the
+    workspace level. */
+async function isWorkspaceMember(workspaceId: string, userId: string): Promise<boolean> {
+  const ws = await Workspace.findById(workspaceId).select("owner members");
+  if (!ws) return false;
+  if (String(ws.owner) === userId) return true;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return (ws?.customRoles || []).some((r: any) => r.id === role);
+  return (ws.members || []).some((m: any) => String(m.user) === userId);
 }
 
-function roleLabel(role: string) {
-  return ROLE_LABELS[role] || role;
-}
-
-const addSchema = z.object({ userId: z.string(), role: z.string().default("developer") });
+const addSchema = z.object({ userId: z.string(), role: z.enum(ASSIGNABLE_ROLES).default("editor") });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -34,10 +32,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
-  if (!(await isValidRole(String(project.workspace), data.role))) return error("Unknown role", 422);
+  if (await isWorkspaceMember(String(project.workspace), data.userId)) {
+    return error("This user is a workspace member and already has access to every project", 409);
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (project.members.some((m: any) => String(m.user) === data.userId)) {
-    return error("User is already a project member", 409);
+    return error("User is already a project guest", 409);
   }
 
   project.members.push({ user: member._id, role: data.role });
@@ -55,14 +55,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     workspace: String(project.workspace),
     user: String(user!._id),
     action: "project.member_added",
-    detail: `Added ${member.name} as ${roleLabel(data.role)}`,
+    detail: `Added ${member.name} as project guest (${ROLE_LABELS[data.role]})`,
   });
 
   const updated = await Project.findById(id).populate("members.user", "name email avatarColor designation active");
   return json({ project: updated }, 201);
 }
 
-const patchSchema = z.object({ userId: z.string(), role: z.string() });
+const patchSchema = z.object({ userId: z.string(), role: z.enum(ASSIGNABLE_ROLES) });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -76,7 +76,6 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
-  if (!(await isValidRole(String(project.workspace), data.role))) return error("Unknown role", 422);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const member = project.members.find((m: any) => String(m.user) === data.userId);
   if (!member) return error("Member not found", 404);
@@ -89,7 +88,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     workspace: String(project.workspace),
     user: String(user!._id),
     action: "project.role_changed",
-    detail: `Changed a member's role to ${roleLabel(data.role)}`,
+    detail: `Changed a guest's role to ${ROLE_LABELS[data.role]}`,
   });
   const updated = await Project.findById(id).populate("members.user", "name email avatarColor designation active");
   return json({ project: updated });

@@ -3,11 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { Plus, FolderKanban, Users, Settings, Trash2, Shield } from "lucide-react";
+import { Plus, FolderKanban, Users, Settings, Trash2 } from "lucide-react";
 import { fetcher, api } from "@/lib/client";
 import { Modal, Avatar, Spinner, EmptyState } from "@/components/ui";
 import { useApp } from "@/components/AppShell";
-import { ROLE_LABELS, CAPABILITIES, CAPABILITY_LABELS, type Capability } from "@/lib/constants";
+import { ROLE_LABELS, ASSIGNABLE_ROLES } from "@/lib/constants";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -19,9 +19,8 @@ export default function WorkspacesPage() {
   const [createWs, setCreateWs] = useState(false);
   const [createProjIn, setCreateProjIn] = useState<Any>(null);
   const [manageWs, setManageWs] = useState<Any>(null);
-  const [rolesWs, setRolesWs] = useState<Any>(null);
   const [form, setForm] = useState({ name: "", description: "", key: "" });
-  const [invite, setInvite] = useState({ email: "", role: "member" });
+  const [invite, setInvite] = useState({ email: "", role: "editor" });
   const [err, setErr] = useState("");
 
   const workspaces = data?.workspaces || [];
@@ -69,9 +68,8 @@ export default function WorkspacesPage() {
   }
 
   const isWsAdmin = (ws: Any) =>
-    me?.role === "super_admin" ||
     String(ws.owner?._id || ws.owner) === me?._id ||
-    ws.members?.some((m: Any) => (m.user?._id || m.user) === me?._id && m.role === "workspace_admin");
+    ws.members?.some((m: Any) => (m.user?._id || m.user) === me?._id && (m.role === "owner" || m.role === "admin"));
 
   return (
     <div className="mx-auto max-w-5xl p-6">
@@ -111,15 +109,14 @@ export default function WorkspacesPage() {
                   </span>
                   {isWsAdmin(ws) && (
                     <>
-                      <button className="btn-ghost !p-2" title="Custom roles" onClick={() => { setErr(""); setRolesWs(ws); }}>
-                        <Shield size={14} />
-                      </button>
                       <button className="btn-ghost !p-2" title="Members & settings" onClick={() => { setErr(""); setManageWs(ws); }}>
                         <Settings size={14} />
                       </button>
-                      <button className="btn-ghost !p-2 text-red-500" title="Delete workspace" onClick={() => deleteWorkspace(ws)}>
-                        <Trash2 size={14} />
-                      </button>
+                      {String(ws.owner?._id || ws.owner) === me?._id && (
+                        <button className="btn-ghost !p-2 text-red-500" title="Delete workspace" onClick={() => deleteWorkspace(ws)}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </>
                   )}
                 </div>
@@ -178,119 +175,58 @@ export default function WorkspacesPage() {
       <Modal open={!!manageWs} onClose={() => setManageWs(null)} title={`Members — ${manageWs?.name || ""}`}>
         {manageWs && (
           <div className="space-y-4">
+            <p className="text-xs text-muted">Workspace members get access to <b>every project</b> in this workspace at their role.</p>
             <form onSubmit={submitInvite} className="flex gap-2">
               <input className="input" type="email" placeholder="teammate@company.com" required value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} />
-              <select className="input !w-40" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>
-                <option value="member">Member</option>
-                <option value="workspace_admin">Workspace Admin</option>
+              <select className="input !w-32" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>
+                {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
               </select>
               <button className="btn-primary shrink-0">Invite</button>
             </form>
             {err && <p className="text-sm text-red-500">{err}</p>}
             <div className="space-y-2">
-              {manageWs.members?.map((m: Any) => (
-                <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
-                  <Avatar user={m.user} size={26} />
-                  <div className="min-w-0">
-                    <div className="truncate text-sm font-medium">{m.user?.name} {!m.user?.active && <span className="text-xs text-red-500">(deactivated)</span>}</div>
-                    <div className="truncate text-xs text-muted">{m.user?.email}</div>
+              {manageWs.members?.map((m: Any) => {
+                const isOwner = String(manageWs.owner?._id || manageWs.owner) === m.user?._id;
+                return (
+                  <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
+                    <Avatar user={m.user} size={26} />
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{m.user?.name} {!m.user?.active && <span className="text-xs text-red-500">(deactivated)</span>}</div>
+                      <div className="truncate text-xs text-muted">{m.user?.email}</div>
+                    </div>
+                    {isOwner ? (
+                      <span className="ml-auto chip bg-accent/15 text-accent">{ROLE_LABELS.owner}</span>
+                    ) : (
+                      <select
+                        className="ml-auto rounded border border-line bg-card px-2 py-1 text-xs"
+                        value={m.role}
+                        onChange={async (e) => {
+                          const res = await api<Any>(`/api/workspaces/${manageWs._id}/members`, "PATCH", { userId: m.user._id, role: e.target.value });
+                          setManageWs(res.workspace); mutate();
+                        }}
+                      >
+                        {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                      </select>
+                    )}
+                    {!isOwner && (
+                      <button
+                        className="text-xs text-red-500 hover:underline"
+                        onClick={async () => {
+                          await api(`/api/workspaces/${manageWs._id}/members?userId=${m.user._id}`, "DELETE");
+                          const res = await fetcher<Any>(`/api/workspaces/${manageWs._id}`);
+                          setManageWs(res.workspace); mutate();
+                        }}
+                      >
+                        Remove
+                      </button>
+                    )}
                   </div>
-                  <select
-                    className="ml-auto rounded border border-line bg-card px-2 py-1 text-xs"
-                    value={m.role}
-                    onChange={async (e) => {
-                      const res = await api<Any>(`/api/workspaces/${manageWs._id}/members`, "PATCH", { userId: m.user._id, role: e.target.value });
-                      setManageWs(res.workspace); mutate();
-                    }}
-                  >
-                    <option value="member">{ROLE_LABELS.member}</option>
-                    <option value="workspace_admin">{ROLE_LABELS.workspace_admin}</option>
-                  </select>
-                  {String(manageWs.owner?._id || manageWs.owner) !== m.user?._id && (
-                    <button
-                      className="text-xs text-red-500 hover:underline"
-                      onClick={async () => {
-                        await api(`/api/workspaces/${manageWs._id}/members?userId=${m.user._id}`, "DELETE");
-                        const res = await fetcher<Any>(`/api/workspaces/${manageWs._id}`);
-                        setManageWs(res.workspace); mutate();
-                      }}
-                    >
-                      Remove
-                    </button>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
       </Modal>
-
-      {rolesWs && (
-        <RolesModal ws={rolesWs} onClose={() => setRolesWs(null)} onSaved={(w) => { setRolesWs(w); mutate(); }} />
-      )}
     </div>
-  );
-}
-
-/* ---------------------- custom roles management ---------------------- */
-function RolesModal({ ws, onClose, onSaved }: { ws: Any; onClose: () => void; onSaved: (w: Any) => void }) {
-  const [roles, setRoles] = useState<Any[]>(() => (ws.customRoles || []).map((r: Any) => ({ ...r, capabilities: [...(r.capabilities || [])] })));
-  const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  const addRole = () =>
-    setRoles([...roles, { id: `role_${Date.now().toString(36)}_${roles.length}`, name: "New role", capabilities: ["project:view"] }]);
-
-  const toggleCap = (i: number, cap: Capability) =>
-    setRoles(roles.map((r, ri) => (ri === i ? { ...r, capabilities: r.capabilities.includes(cap) ? r.capabilities.filter((c: string) => c !== cap) : [...r.capabilities, cap] } : r)));
-
-  async function save() {
-    setErr(""); setBusy(true);
-    try {
-      const res = await api<Any>(`/api/workspaces/${ws._id}`, "PATCH", {
-        customRoles: roles.map((r) => ({ id: r.id, name: r.name, capabilities: r.capabilities })),
-      });
-      onSaved({ ...ws, customRoles: res.workspace.customRoles });
-      onClose();
-    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
-  }
-
-  return (
-    <Modal open onClose={onClose} wide title={`Custom roles — ${ws.name}`}>
-      <p className="mb-3 text-sm text-muted">
-        Define reusable roles for project members. Pick exactly which actions each role can perform.
-        Built-in roles (Project Admin, Team Lead, Developer, QA, Viewer) are always available too.
-      </p>
-      <div className="space-y-4">
-        {roles.map((r, i) => (
-          <div key={r.id} className="rounded-lg border border-line p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <input
-                className="input !w-56 !py-1 text-sm font-medium"
-                value={r.name}
-                onChange={(e) => setRoles(roles.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))}
-              />
-              <button className="ml-auto text-xs text-red-500 hover:underline" onClick={() => setRoles(roles.filter((_, xi) => xi !== i))}>
-                Delete role
-              </button>
-            </div>
-            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-              {CAPABILITIES.map((cap) => (
-                <label key={cap} className="flex cursor-pointer items-center gap-2 text-sm">
-                  <input type="checkbox" checked={r.capabilities.includes(cap)} onChange={() => toggleCap(i, cap)} />
-                  {CAPABILITY_LABELS[cap]}
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-        {roles.length === 0 && <p className="text-sm text-muted">No custom roles yet.</p>}
-      </div>
-      {err && <p className="mt-3 text-sm text-red-500">{err}</p>}
-      <div className="mt-4 flex gap-2">
-        <button className="btn-ghost" onClick={addRole}><Plus size={14} /> Add role</button>
-        <button className="btn-primary ml-auto" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save roles"}</button>
-      </div>
-    </Modal>
   );
 }

@@ -19,16 +19,8 @@ const UserSchema = new Schema(
 const WorkspaceMemberSchema = new Schema(
   {
     user: { type: Types.ObjectId, ref: "User", required: true },
-    role: { type: String, enum: ["workspace_admin", "member"], default: "member" },
-  },
-  { _id: false }
-);
-
-const CustomRoleSchema = new Schema(
-  {
-    id: { type: String, required: true },
-    name: { type: String, required: true },
-    capabilities: [{ type: String }],
+    // owner/admin/editor/viewer — applies to every project in the workspace.
+    role: { type: String, enum: ["owner", "admin", "editor", "viewer"], default: "editor" },
   },
   { _id: false }
 );
@@ -39,19 +31,18 @@ const WorkspaceSchema = new Schema(
     description: { type: String, default: "" },
     owner: { type: Types.ObjectId, ref: "User", required: true },
     members: [WorkspaceMemberSchema],
-    // Workspace-defined roles usable for project membership across the workspace.
-    customRoles: [CustomRoleSchema],
   },
   { timestamps: true }
 );
 
 /* ----------------------------- Project ---------------------------- */
+// Project members here are GUESTS — users who are NOT workspace members but have
+// access to this single project. Workspace members get access automatically and
+// are NOT stored here. Role: admin/editor/viewer.
 const ProjectMemberSchema = new Schema(
   {
     user: { type: Types.ObjectId, ref: "User", required: true },
-    // built-in role id (project_admin/team_lead/developer/qa/viewer) OR a
-    // workspace custom-role id — validated in the API layer, not by enum.
-    role: { type: String, default: "developer" },
+    role: { type: String, enum: ["admin", "editor", "viewer"], default: "editor" },
   },
   { _id: false }
 );
@@ -77,6 +68,16 @@ const LabelSchema = new Schema(
   { _id: false }
 );
 
+// A project-defined custom task field (e.g. "ETA").
+const CustomFieldSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    type: { type: String, enum: ["text", "number", "date"], default: "text" },
+  },
+  { _id: false }
+);
+
 const ProjectSchema = new Schema(
   {
     workspace: { type: Types.ObjectId, ref: "Workspace", required: true, index: true },
@@ -87,6 +88,9 @@ const ProjectSchema = new Schema(
     members: [ProjectMemberSchema],
     statuses: [StatusSchema],
     labels: [LabelSchema],
+    // Task-field configuration: hide built-in optional fields + define custom ones.
+    hiddenFields: [{ type: String }],
+    customFields: [CustomFieldSchema],
     taskCounter: { type: Number, default: 0 },
     archived: { type: Boolean, default: false },
   },
@@ -139,6 +143,7 @@ const TaskSchema = new Schema(
     storyPoints: { type: Number, default: null },
     labels: [{ type: String }], // label ids from project.labels
     dueDate: { type: Date, default: null },
+    customFields: { type: Schema.Types.Mixed, default: {} }, // { [fieldId]: value } per project.customFields
     watchers: [{ type: Types.ObjectId, ref: "User" }],
     dependencies: [{ type: Types.ObjectId, ref: "Task" }], // blocked by
     order: { type: Number, default: 0 }, // position within status column / backlog

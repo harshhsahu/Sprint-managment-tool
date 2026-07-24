@@ -14,7 +14,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const project = await Project.findById(id)
     .populate("lead", "name email avatarColor")
     .populate("members.user", "name email avatarColor designation active")
-    .populate("workspace", "name customRoles");
+    .populate({
+      path: "workspace",
+      select: "name owner members",
+      populate: [
+        { path: "owner", select: "name email avatarColor active" },
+        { path: "members.user", select: "name email avatarColor designation active" },
+      ],
+    });
   if (!project) return error("Project not found", 404);
   const myCapabilities = [...(await getCapabilities(user, id))];
   return json({ project, myRole: role, myCapabilities });
@@ -36,6 +43,11 @@ const patchSchema = z.object({
   statuses: z.array(statusSchema).min(1).optional(),
   labels: z
     .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), color: z.string().max(20) }))
+    .optional(),
+  hiddenFields: z.array(z.string()).max(30).optional(),
+  customFields: z
+    .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), type: z.enum(["text", "number", "date"]) }))
+    .max(20)
     .optional(),
   archived: z.boolean().optional(),
 });

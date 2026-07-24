@@ -1,12 +1,12 @@
-# SprintBoard — Agile Task Management
+# Kanbo — Agile Task Management
 
 A modern, production-ready agile task management application inspired by Jira and Linear. Built with **Next.js 16 (App Router)**, **MongoDB (Mongoose)**, **Tailwind CSS v4**, **SWR**, **@hello-pangea/dnd** and **Recharts**.
 
 ## Features
 
 - **Auth & user management** — register / login / logout / password reset (JWT in httpOnly cookie), user profiles (avatar color, designation, timezone), activity history, super-admin user administration (activate/deactivate, global roles). The first registered account becomes the **Super Admin**.
-- **RBAC** — Super Admin → Workspace Admin → Project Admin → Team Lead → Developer / QA → Viewer, enforced in every API route.
-- **Workspaces & projects** — multiple workspaces, projects per workspace, member invites with per-workspace and per-project roles, custom workflow statuses (colors, categories, WIP limits, drag-reorder), custom labels, project archive/delete.
+- **RBAC** — one role set (**Owner / Admin / Editor / Viewer**) at both the workspace and project level, capability-enforced in every API route. Workspace membership grants access to all its projects; project "guests" get single-project access.
+- **Workspaces & projects** — multiple workspaces, projects per workspace, member invites, project guests, custom workflow statuses (colors, categories, WIP limits, drag-reorder), custom labels, project archive/delete.
 - **Tasks** — 7 types (epic, story, task, bug, spike, improvement, subtask), status, priority, assignee, reporter, sprint, epic link, story points, labels, due date, watchers, dependencies (blocked-by), subtasks, comments with @email mentions, per-task activity history, duplicate, archive, delete, bulk updates.
 - **Kanban board** — drag & drop between columns with persistent ordering, WIP-limit warnings, swimlanes (assignee / priority / epic), sprint or all-tasks scope, quick task creation, card multi-select with a bulk-action bar.
 - **Backlog & sprints** — create/edit/start/complete/archive/delete sprints, sprint goal, dates, team capacity with over-capacity warning, drag tasks between backlog and sprints, committed/completed point tracking, moving incomplete tasks on completion.
@@ -42,12 +42,12 @@ Open http://localhost:3000.
 
 ### Demo accounts (after `npm run seed`)
 
-| Email | Role | Password |
+| Email | Workspace role | Password |
 |---|---|---|
-| alice@demo.dev | Super Admin / Project Admin | password123 |
-| bob@demo.dev | Team Lead | password123 |
-| dave@demo.dev | Developer | password123 |
-| carol@demo.dev | QA | password123 |
+| alice@demo.dev | Owner (+ global Super Admin) | password123 |
+| bob@demo.dev | Admin | password123 |
+| carol@demo.dev | Editor | password123 |
+| dave@demo.dev | Editor | password123 |
 | erin@demo.dev | Viewer | password123 |
 
 ### Environment variables

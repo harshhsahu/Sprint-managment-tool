@@ -5,18 +5,21 @@
   and stored in an httpOnly, SameSite=Lax cookie `sm_session` (7-day expiry).
 - **Route gating:** `src/middleware.ts` verifies the JWT and redirects unauthenticated
   users to `/login`; API handlers re-verify via `withAuth()` (never trust the client).
-- **Authorization (RBAC):** capability-based. Roles resolve to a capability set:
-  - Global: `super_admin` (user administration only), `member`.
-  - Workspace: `workspace_admin`, `member`.
-  - Project: built-in `project_admin`/`team_lead`/`developer`/`qa`/`viewer` **or** a
-    workspace custom role. Capabilities: `project:view`, `task:create|edit|delete|comment`,
-    `sprint:manage`, `member:manage`, `project:manage`.
+- **Authorization (RBAC):** capability-based. One role set — **owner/admin/editor/viewer** —
+  applies at both the workspace and project level and resolves to a capability set
+  (`project:view`, `task:create|edit|delete|comment`, `sprint:manage`, `member:manage`,
+  `project:manage`). `super_admin`/`member` are separate GLOBAL roles for user
+  administration only. See [modules/04-roles-permissions.md](modules/04-roles-permissions.md).
 - **Enforcement:** `can(user, projectId, capability)` in every mutating route. UI gating on
   `myCapabilities` is UX only.
 
-## Visibility Isolation
-Users only see workspaces/projects they own or belong to. `super_admin` does **not**
-auto-see other users' data. All list queries filter by ownership/membership.
+## Access & Visibility
+- A workspace member has their role on **every project** in the workspace (computed — not
+  copied into `project.members`). `project.members` holds only **guests** (users outside
+  the workspace granted single-project access).
+- Users only see workspaces/projects they belong to (member or guest). `super_admin` does
+  **not** auto-see other users' data. All list queries filter by workspace membership +
+  guest entries. Removing someone from a workspace revokes their access to all its projects.
 
 ## Secrets
 - `JWT_SECRET` and `MONGODB_URI` live in env (`.env.local` locally; Cloud Run env/Secret

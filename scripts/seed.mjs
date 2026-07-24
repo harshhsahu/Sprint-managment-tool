@@ -52,11 +52,11 @@ async function main() {
     description: "Product & platform engineering teams",
     owner: alice._id,
     members: [
-      { user: alice._id, role: "workspace_admin" },
-      { user: bob._id, role: "member" },
-      { user: carol._id, role: "member" },
-      { user: dave._id, role: "member" },
-      { user: erin._id, role: "member" },
+      { user: alice._id, role: "owner" },
+      { user: bob._id, role: "admin" },
+      { user: carol._id, role: "editor" },
+      { user: dave._id, role: "editor" },
+      { user: erin._id, role: "viewer" },
     ],
   });
 
@@ -66,13 +66,9 @@ async function main() {
     key: "CC",
     description: "Next-gen self-service cloud console",
     lead: alice._id,
-    members: [
-      { user: alice._id, role: "project_admin" },
-      { user: bob._id, role: "team_lead" },
-      { user: dave._id, role: "developer" },
-      { user: carol._id, role: "qa" },
-      { user: erin._id, role: "viewer" },
-    ],
+    // No project members: everyone in the workspace already has access. `members`
+    // holds only project guests (users outside the workspace).
+    members: [],
     statuses: STATUSES,
     labels: [
       { id: "frontend", name: "Frontend", color: "#3b82f6" },
@@ -200,11 +196,11 @@ async function main() {
 
   console.log("Seeded ✔");
   console.log("Login accounts (password for all: password123):");
-  console.log("  alice@demo.dev  — Super Admin / Project Admin");
-  console.log("  bob@demo.dev    — Team Lead");
-  console.log("  dave@demo.dev   — Developer");
-  console.log("  carol@demo.dev  — QA");
-  console.log("  erin@demo.dev   — Viewer");
+  console.log("  alice@demo.dev  — Workspace Owner (+ global Super Admin)");
+  console.log("  bob@demo.dev    — Workspace Admin");
+  console.log("  carol@demo.dev  — Workspace Editor");
+  console.log("  dave@demo.dev   — Workspace Editor");
+  console.log("  erin@demo.dev   — Workspace Viewer");
   await mongoose.disconnect();
 }
 

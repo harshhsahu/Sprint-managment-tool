@@ -1,11 +1,12 @@
 # MongoDB
 
-> The single source of truth for every entity in SprintBoard.
+> The single source of truth for every entity in Kanbo.
 
 > [!WARNING]
 > `Task.status` and `Task.labels[]` are **string ids into the parent Project**, not DB
-> references. `Project.members[].role` may be a **workspace custom-role id**, not a join.
-> Resolve these in the API/permissions layer — don't assume a populate will hydrate them.
+> references. Project access is **computed** — a workspace member has access to every
+> project without a `Project.members` row (only guests are stored there). Resolve access in
+> the permissions layer (`getProjectRole`), don't infer it from `Project.members` alone.
 
 ## Role
 Stores users, workspaces, projects, sprints, tasks, comments, activity, notifications,

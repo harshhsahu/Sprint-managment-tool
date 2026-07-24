@@ -8,15 +8,15 @@ export async function GET(req: Request) {
   const q = new URL(req.url).searchParams.get("q")?.trim() || "";
   if (q.length < 2) return json({ tasks: [], projects: [], sprints: [], users: [] });
 
-  // restrict to projects the user can see (strict isolation)
+  // restrict to projects the user can see: every project in a workspace they
+  // belong to, plus any project they guest on.
   const myWorkspaces = await Workspace.find({
-    $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+    $or: [{ owner: user!._id }, { "members.user": user!._id }],
   }).select("_id");
   const projectFilter = {
     $or: [
-      { "members.user": user!._id },
-      { lead: user!._id },
       { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+      { "members.user": user!._id },
     ],
   };
   const visibleProjects = await Project.find(projectFilter).select("_id name key");

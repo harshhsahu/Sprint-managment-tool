@@ -22,15 +22,15 @@ export async function GET(req: Request) {
     if (!role) return error("Access denied", 403);
     filter.project = projectId;
   } else {
-    // cross-project queries (my tasks) limited to projects the user can see
+    // cross-project queries (my tasks) limited to projects the user can see:
+    // every project in a workspace they belong to, plus any project they guest on.
     const myWorkspaces = await Workspace.find({
-      $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+      $or: [{ owner: user!._id }, { "members.user": user!._id }],
     }).select("_id");
     const projects = await Project.find({
       $or: [
-        { "members.user": user!._id },
-        { lead: user!._id },
         { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+        { "members.user": user!._id },
       ],
     }).select("_id");
     filter.project = { $in: projects.map((p) => p._id) };
@@ -117,6 +117,7 @@ const createSchema = z.object({
   storyPoints: z.number().min(0).max(100).nullable().optional(),
   labels: z.array(z.string()).optional(),
   dueDate: z.string().nullable().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
 });
 
 export async function POST(req: Request) {
@@ -155,6 +156,7 @@ export async function POST(req: Request) {
     storyPoints: data.storyPoints ?? null,
     labels: data.labels || [],
     dueDate: data.dueDate ? new Date(data.dueDate) : null,
+    customFields: data.customFields || {},
     watchers: [user!._id],
     order: (maxOrder?.order ?? 0) + 1000,
   });

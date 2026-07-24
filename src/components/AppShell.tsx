@@ -6,11 +6,12 @@ import { usePathname, useRouter } from "next/navigation";
 import useSWR from "swr";
 import {
   Kanban, LayoutDashboard, ListChecks, Search, Bell, Sun, Moon, LogOut,
-  ChevronDown, Plus, Settings, Users, FolderKanban, Calendar, BarChart3,
-  Rows3, GanttChartSquare, History, X, User as UserIcon,
+  ChevronDown, ChevronLeft, PanelLeftClose, PanelLeftOpen, Plus, Settings, Users,
+  FolderKanban, Calendar, BarChart3, Rows3, GanttChartSquare, History, User as UserIcon,
 } from "lucide-react";
 import { fetcher, api } from "@/lib/client";
 import { Avatar, Modal } from "@/components/ui";
+import { KanboWordmark } from "@/components/brand";
 import { cn } from "@/lib/utils";
 
 /* ----------------------------- context ------------------------------ */
@@ -22,6 +23,7 @@ const AppCtx = createContext<{ me: Any; projects: Any[]; workspaces: Any[]; refr
 export const useApp = () => useContext(AppCtx);
 
 /* --------------------------- theme toggle --------------------------- */
+/* A labeled on/off switch that lives in the sidebar. */
 function ThemeToggle() {
   const [dark, setDark] = useState(false);
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -33,8 +35,16 @@ function ThemeToggle() {
     localStorage.setItem("sm_theme", next ? "dark" : "light");
   }
   return (
-    <button onClick={toggle} className="btn-ghost !p-2" title="Toggle theme" aria-label="Toggle theme">
-      {dark ? <Sun size={16} /> : <Moon size={16} />}
+    <button
+      onClick={toggle}
+      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-muted hover:bg-line/40 hover:text-foreground"
+      aria-label="Toggle theme"
+    >
+      {dark ? <Moon size={16} /> : <Sun size={16} />}
+      {dark ? "Dark mode" : "Light mode"}
+      <span className={cn("ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition", dark ? "bg-accent" : "bg-line")}>
+        <span className={cn("h-3 w-3 rounded-full bg-white transition", dark && "translate-x-3")} />
+      </span>
     </button>
   );
 }
@@ -217,14 +227,15 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
       {open && <div className="fixed inset-0 z-30 bg-black/40 lg:hidden" onClick={onClose} />}
       <aside
         className={cn(
-          "fixed z-40 flex h-full w-64 shrink-0 flex-col border-r border-line bg-card transition-transform lg:static lg:translate-x-0",
-          open ? "translate-x-0" : "-translate-x-full"
+          "fixed z-40 flex h-full w-64 shrink-0 flex-col border-r border-line bg-card transition-all lg:static",
+          open ? "translate-x-0" : "-translate-x-full lg:w-0 lg:overflow-hidden lg:border-transparent"
         )}
       >
         <div className="flex items-center gap-2 px-4 py-4">
-          <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-white"><Kanban size={18} /></span>
-          <span className="font-bold tracking-tight">SprintBoard</span>
-          <button className="ml-auto lg:hidden text-muted" onClick={onClose} aria-label="Close menu"><X size={18} /></button>
+          <KanboWordmark size={30} />
+          <button className="ml-auto text-muted hover:text-foreground" onClick={onClose} aria-label="Collapse sidebar" title="Collapse sidebar">
+            <PanelLeftClose size={18} />
+          </button>
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
@@ -272,13 +283,17 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
             )}
           </div>
         </nav>
+
+        <div className="border-t border-line p-2">
+          <ThemeToggle />
+        </div>
       </aside>
     </>
   );
 }
 
 /* ------------------------------ topbar ------------------------------ */
-function Topbar({ onMenu }: { onMenu: () => void }) {
+function Topbar({ sidebarOpen, onOpenSidebar }: { sidebarOpen: boolean; onOpenSidebar: () => void }) {
   const { me } = useApp();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -291,12 +306,16 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
 
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-line bg-card px-4">
-      <button className="btn-ghost !p-2 lg:hidden" onClick={onMenu} aria-label="Open menu">
-        <ChevronDown size={16} className="rotate-90" />
+      {!sidebarOpen && (
+        <button className="btn-ghost !p-2" onClick={onOpenSidebar} aria-label="Open sidebar" title="Open sidebar">
+          <PanelLeftOpen size={18} />
+        </button>
+      )}
+      <button className="btn-ghost !p-2" onClick={() => router.back()} aria-label="Go back" title="Go back">
+        <ChevronLeft size={18} />
       </button>
       <GlobalSearch />
       <div className="ml-auto flex items-center gap-2">
-        <ThemeToggle />
         <NotificationsBell />
         <div className="relative">
           <button onClick={() => setMenuOpen((o) => !o)} className="flex items-center gap-2 rounded-lg p-1 hover:bg-line/40">
@@ -333,7 +352,12 @@ function Topbar({ onMenu }: { onMenu: () => void }) {
 
 /* ------------------------------- shell ------------------------------ */
 export default function AppShell({ children }: { children: ReactNode }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Start collapsed on small screens (the sidebar is an overlay there).
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (typeof window !== "undefined" && window.innerWidth < 1024) setSidebarOpen(false);
+  }, []);
   const { data: meData } = useSWR<Any>("/api/auth/me", fetcher);
   const { data: wsData, mutate: mutWs } = useSWR<Any>("/api/workspaces", fetcher);
   const { data: projData, mutate: mutProj } = useSWR<Any>("/api/projects", fetcher);
@@ -350,7 +374,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <div className="flex h-screen overflow-hidden">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar onMenu={() => setSidebarOpen(true)} />
+          <Topbar sidebarOpen={sidebarOpen} onOpenSidebar={() => setSidebarOpen(true)} />
           <main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
         </div>
       </div>

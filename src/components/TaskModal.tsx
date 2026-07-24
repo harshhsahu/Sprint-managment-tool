@@ -55,6 +55,9 @@ export default function TaskModal({
   const canComment = has("task:comment");
   const members: Any[] = project?.members || [];
   const statuses: Any[] = project?.statuses || [];
+  const hiddenFields: string[] = project?.hiddenFields || [];
+  const showField = (id: string) => !hiddenFields.includes(id);
+  const projectCustomFields: Any[] = project?.customFields || [];
 
   async function createLabel(e: React.FormEvent) {
     e.preventDefault();
@@ -201,7 +204,7 @@ export default function TaskModal({
             )}
 
             {/* dependencies */}
-            {task.dependencies?.length > 0 && (
+            {showField("dependencies") && task.dependencies?.length > 0 && (
               <div className="mb-4">
                 <div className="mb-1 text-xs font-semibold uppercase text-muted">Blocked by</div>
                 {task.dependencies.map((d: Any) => (
@@ -305,6 +308,7 @@ export default function TaskModal({
                 {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
               </select>
             </Field>
+            {showField("sprint") && (
             <Field label="Sprint">
               <select className={selectCls} value={task.sprint?._id || ""} disabled={!canEdit} onChange={(e) => patch({ sprint: e.target.value || null })}>
                 <option value="">Backlog</option>
@@ -313,7 +317,8 @@ export default function TaskModal({
                 ))}
               </select>
             </Field>
-            {task.type !== "epic" && (
+            )}
+            {task.type !== "epic" && showField("epic") && (
               <Field label="Epic">
                 <select className={selectCls} value={task.epic?._id || ""} disabled={!canEdit} onChange={(e) => patch({ epic: e.target.value || null })}>
                   <option value="">None</option>
@@ -321,6 +326,7 @@ export default function TaskModal({
                 </select>
               </Field>
             )}
+            {showField("storyPoints") && (
             <Field label="Story points">
               <input
                 type="number" min={0} max={100}
@@ -330,6 +336,8 @@ export default function TaskModal({
                 onBlur={(e) => patch({ storyPoints: e.target.value === "" ? null : Number(e.target.value) })}
               />
             </Field>
+            )}
+            {showField("dueDate") && (
             <Field label="Due date">
               <input
                 type="date"
@@ -340,6 +348,24 @@ export default function TaskModal({
                 onChange={(e) => patch({ dueDate: e.target.value || null })}
               />
             </Field>
+            )}
+            {projectCustomFields.map((cf: Any) => {
+              const val = task.customFields?.[cf.id] ?? "";
+              const inputCls = "rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-line focus:border-accent outline-none";
+              return (
+                <Field key={cf.id} label={cf.name}>
+                  {cf.type === "date" ? (
+                    <input type="date" className={inputCls} defaultValue={val ? String(val).slice(0, 10) : ""} disabled={!canEdit}
+                      onChange={(e) => patch({ customFields: { [cf.id]: e.target.value || null } })} />
+                  ) : (
+                    <input type={cf.type === "number" ? "number" : "text"} className={cn(inputCls, "w-full")} defaultValue={val} disabled={!canEdit}
+                      placeholder={`Add ${cf.name.toLowerCase()}…`}
+                      onBlur={(e) => patch({ customFields: { [cf.id]: cf.type === "number" ? (e.target.value === "" ? null : Number(e.target.value)) : e.target.value } })} />
+                  )}
+                </Field>
+              );
+            })}
+            {showField("labels") && (
             <Field label="Labels">
               <div className="flex flex-wrap items-center gap-1 px-2">
                 {labels.map((l: Any) => {
@@ -376,12 +402,15 @@ export default function TaskModal({
                 </form>
               )}
             </Field>
+            )}
+            {showField("watchers") && (
             <Field label="Watchers">
               <span className="flex items-center gap-1 px-2">
                 {task.watchers?.slice(0, 5).map((w: Any) => <Avatar key={w._id} user={w} size={20} />)}
                 <span className="text-xs text-muted">{task.watchers?.length || 0}</span>
               </span>
             </Field>
+            )}
 
             <div className="pt-3 text-xs text-muted px-2">
               Created {formatDate(task.createdAt)}

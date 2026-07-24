@@ -4,11 +4,11 @@ import { use, useMemo, useState } from "react";
 import useSWR from "swr";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { fetcher } from "@/lib/client";
-import { Spinner, TypeIcon } from "@/components/ui";
+import { Spinner, TypeIcon, Modal, PriorityBadge } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { useProject, FilterBar, ProjectHeader, emptyFilters, filtersToQuery, type TaskFilters, type Any } from "@/components/project/common";
 import { PRIORITY_META } from "@/lib/constants";
-import { cn } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 
 export default function CalendarPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
@@ -16,6 +16,7 @@ export default function CalendarPage({ params }: { params: Promise<{ projectId: 
   const [filters, setFilters] = useState<TaskFilters>(emptyFilters);
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [openTask, setOpenTask] = useState<string | null>(null);
+  const [dayModal, setDayModal] = useState<Date | null>(null);
 
   const monthStart = month;
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
@@ -89,7 +90,14 @@ export default function CalendarPage({ params }: { params: Promise<{ projectId: 
                           <span className="truncate">{t.title}</span>
                         </button>
                       ))}
-                      {dayTasks.length > 3 && <div className="text-[10px] text-muted">+{dayTasks.length - 3} more</div>}
+                      {dayTasks.length > 3 && (
+                        <button
+                          onClick={() => setDayModal(day)}
+                          className="w-full rounded px-1 py-0.5 text-left text-[10px] font-medium text-accent hover:bg-accent/10"
+                        >
+                          +{dayTasks.length - 3} more
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -98,6 +106,29 @@ export default function CalendarPage({ params }: { params: Promise<{ projectId: 
           ))}
         </div>
       )}
+      {dayModal && (
+        <Modal open onClose={() => setDayModal(null)} title={formatDate(dayModal)}>
+          <div className="space-y-1">
+            {tasksOn(dayModal).map((t) => {
+              const st = (project.statuses || []).find((s: Any) => s.id === t.status);
+              return (
+                <button
+                  key={t._id}
+                  onClick={() => { setOpenTask(t._id); setDayModal(null); }}
+                  className="flex w-full items-center gap-2 rounded-lg border border-line px-2 py-1.5 text-left text-sm hover:border-accent"
+                >
+                  <TypeIcon type={t.type} size={12} />
+                  <span className="font-mono text-xs text-muted">{t.key}</span>
+                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                  {st && <span className="chip !text-[10px]" style={{ background: `${st.color}22`, color: st.color }}>{st.name}</span>}
+                  <PriorityBadge priority={t.priority} compact />
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+
       {openTask && <TaskModal taskId={openTask} project={project} onClose={() => setOpenTask(null)} onChanged={() => mutate()} />}
     </div>
   );

@@ -22,26 +22,40 @@ export const TYPE_META: Record<TaskType, { label: string; color: string; icon: s
   subtask: { label: "Subtask", color: "#64748b", icon: "GitBranch" },
 };
 
-export const WORKSPACE_ROLES = ["workspace_admin", "member"] as const;
-export type WorkspaceRole = (typeof WORKSPACE_ROLES)[number];
+/* One unified role set used at BOTH the workspace and project level.
+   - owner  : the creator; full control incl. deleting the workspace/project
+   - admin  : manage members, settings, sprints, and all task actions
+   - editor : create / edit / comment on tasks (no delete, no sprint management)
+   - viewer : read-only
+   Workspace membership grants that role across EVERY project in the workspace;
+   a "project guest" (not a workspace member) can be given admin/editor/viewer on a
+   single project. */
+export const ROLES = ["owner", "admin", "editor", "viewer"] as const;
+export type Role = (typeof ROLES)[number];
 
-export const PROJECT_ROLES = ["project_admin", "team_lead", "developer", "qa", "viewer"] as const;
-export type ProjectRole = (typeof PROJECT_ROLES)[number];
+/** Roles assignable via a dropdown (owner is reserved for the creator). */
+export const ASSIGNABLE_ROLES = ["admin", "editor", "viewer"] as const;
 
 export const ROLE_LABELS: Record<string, string> = {
+  // global user roles (user administration only)
   super_admin: "Super Admin",
-  workspace_admin: "Workspace Admin",
   member: "Member",
-  project_admin: "Project Admin",
-  team_lead: "Team Lead",
-  developer: "Developer",
-  qa: "QA",
+  // workspace/project roles
+  owner: "Owner",
+  admin: "Admin",
+  editor: "Editor",
   viewer: "Viewer",
 };
 
+export const ROLE_DESCRIPTIONS: Record<Role, string> = {
+  owner: "Full control, including deleting the workspace/project",
+  admin: "Manage members, settings, sprints, and all tasks",
+  editor: "Create, edit, and comment on tasks",
+  viewer: "Read-only access",
+};
+
 /* ---------------------- Capabilities (RBAC) ----------------------
-   Permissions are capability-based. Built-in roles map to a fixed set of
-   capabilities; workspace-defined custom roles pick their own set. */
+   Permissions are capability-based. Each role maps to a fixed set of capabilities. */
 export const CAPABILITIES = [
   "project:view",
   "task:create",
@@ -54,25 +68,13 @@ export const CAPABILITIES = [
 ] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 
-export const CAPABILITY_LABELS: Record<Capability, string> = {
-  "project:view": "View project & tasks",
-  "task:create": "Create tasks",
-  "task:edit": "Edit tasks (status, fields, drag & drop)",
-  "task:delete": "Delete tasks",
-  "task:comment": "Comment on tasks",
-  "sprint:manage": "Create & run sprints",
-  "member:manage": "Manage project members & roles",
-  "project:manage": "Edit project settings & delete project",
-};
-
 const ALL_CAPS: Capability[] = [...CAPABILITIES];
 
-/** Capabilities granted by each built-in project role. */
-export const BUILTIN_ROLE_CAPS: Record<ProjectRole, Capability[]> = {
-  project_admin: ALL_CAPS,
-  team_lead: ["project:view", "task:create", "task:edit", "task:delete", "task:comment", "sprint:manage"],
-  developer: ["project:view", "task:create", "task:edit", "task:comment"],
-  qa: ["project:view", "task:create", "task:edit", "task:comment"],
+/** Capabilities granted by each role. */
+export const ROLE_CAPS: Record<Role, Capability[]> = {
+  owner: ALL_CAPS,
+  admin: ALL_CAPS,
+  editor: ["project:view", "task:create", "task:edit", "task:comment"],
   viewer: ["project:view"],
 };
 
@@ -85,6 +87,22 @@ export const DEFAULT_STATUSES = [
 ];
 
 export const STATUS_CATEGORIES = ["todo", "in_progress", "done"] as const;
+
+/* Built-in task fields a project can show/hide. Core fields (title, type, status,
+   priority, assignee, reporter, description) are always shown and not listed here. */
+export const OPTIONAL_TASK_FIELDS = [
+  { id: "sprint", label: "Sprint" },
+  { id: "epic", label: "Epic" },
+  { id: "storyPoints", label: "Story points" },
+  { id: "dueDate", label: "Due date" },
+  { id: "labels", label: "Labels" },
+  { id: "dependencies", label: "Dependencies" },
+  { id: "watchers", label: "Watchers" },
+] as const;
+
+/* Custom fields a project can add to its tasks (e.g. "ETA"). */
+export const CUSTOM_FIELD_TYPES = ["text", "number", "date"] as const;
+export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
 
 export const AVATAR_COLORS = [
   "#ef4444", "#f97316", "#eab308", "#22c55e", "#06b6d4",

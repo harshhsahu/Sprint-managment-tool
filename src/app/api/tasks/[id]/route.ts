@@ -46,6 +46,7 @@ const patchSchema = z.object({
   storyPoints: z.number().min(0).max(100).nullable().optional(),
   labels: z.array(z.string()).optional(),
   dueDate: z.string().nullable().optional(),
+  customFields: z.record(z.string(), z.unknown()).optional(),
   watchers: z.array(z.string()).optional(),
   dependencies: z.array(z.string()).optional(),
   archived: z.boolean().optional(),
@@ -122,6 +123,11 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (data.dueDate !== undefined) {
     task.dueDate = data.dueDate ? new Date(data.dueDate) : null;
     changes.push("due date updated");
+  }
+  if (data.customFields !== undefined) {
+    task.customFields = { ...(task.customFields || {}), ...data.customFields };
+    task.markModified("customFields"); // Mixed type — tell Mongoose it changed
+    changes.push("custom fields updated");
   }
 
   await task.save();

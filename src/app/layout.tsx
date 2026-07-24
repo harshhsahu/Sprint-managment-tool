@@ -6,7 +6,7 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "SprintBoard — Agile Task Management",
+  title: "Kanbo — Agile Task Management",
   description: "Modern agile task management for teams: kanban, sprints, backlog, reports.",
 };
 

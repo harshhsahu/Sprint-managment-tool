@@ -1,21 +1,23 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Workspace, User, Project } from "@/models";
-import { getWorkspaceRole } from "@/lib/permissions";
+import { getWorkspaceRole, isWorkspaceManager } from "@/lib/permissions";
+import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/constants";
 
 const addSchema = z.object({
   email: z.string().email(),
-  role: z.enum(["workspace_admin", "member"]).default("member"),
+  role: z.enum(ASSIGNABLE_ROLES).default("editor"),
 });
 
-/** Invite (add) an existing user to the workspace by email. */
+/** Invite (add) an existing user to the workspace by email. Workspace membership
+    grants access to every project in the workspace — no per-project invite needed. */
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
   if (res) return res;
   const { id } = await params;
 
   const myRole = await getWorkspaceRole(user, id);
-  if (myRole !== "workspace_admin") return error("Only workspace admins can invite members", 403);
+  if (!isWorkspaceManager(myRole)) return error("Only workspace owners and admins can invite members", 403);
 
   const { data, res: bodyErr } = await parseBody(req, addSchema);
   if (bodyErr) return bodyErr;
@@ -34,28 +36,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   workspace.members.push({ user: invitee._id, role: data.role });
   await workspace.save();
 
-  // Automatically add the invitee to every project in the workspace.
-  const projectRole = data.role === "workspace_admin" ? "project_admin" : "developer";
-  const projects = await Project.find({ workspace: id });
-  for (const project of projects) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if (project.members.some((m: any) => String(m.user) === String(invitee._id))) continue;
-    project.members.push({ user: invitee._id, role: projectRole });
-    await project.save();
-  }
+  // If they were a guest on any project in this workspace, drop the guest entry —
+  // their workspace membership now grants access at their workspace role.
+  await Project.updateMany({ workspace: id }, { $pull: { members: { user: invitee._id } } });
 
   await notify({
     user: String(invitee._id),
     type: "invite",
     title: `You were added to workspace "${workspace.name}"`,
-    link: `/w/${workspace._id}`,
+    link: `/workspaces`,
     actor: String(user!._id),
   });
   await logActivity({
     workspace: id,
     user: String(user!._id),
     action: "workspace.member_added",
-    detail: `Added ${invitee.name} as ${data.role.replace("_", " ")} (added to ${projects.length} project(s))`,
+    detail: `Added ${invitee.name} as ${ROLE_LABELS[data.role]} (access to all projects)`,
   });
 
   const updated = await Workspace.findById(id).populate("members.user", "name email avatarColor designation active");
@@ -64,7 +60,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
 const patchSchema = z.object({
   userId: z.string(),
-  role: z.enum(["workspace_admin", "member"]),
+  role: z.enum(ASSIGNABLE_ROLES),
 });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -73,13 +69,15 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const { id } = await params;
 
   const myRole = await getWorkspaceRole(user, id);
-  if (myRole !== "workspace_admin") return error("Only workspace admins can change roles", 403);
+  if (!isWorkspaceManager(myRole)) return error("Only workspace owners and admins can change roles", 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
 
   const workspace = await Workspace.findById(id);
   if (!workspace) return error("Workspace not found", 404);
+  // The owner is permanently the owner — their role can't be changed.
+  if (String(workspace.owner) === data.userId) return error("The workspace owner's role cannot be changed", 400);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const member = workspace.members.find((m: any) => String(m.user) === data.userId);
   if (!member) return error("Member not found", 404);
@@ -91,7 +89,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     workspace: id,
     user: String(user!._id),
     action: "workspace.role_changed",
-    detail: `Changed a member's role to ${data.role.replace("_", " ")}`,
+    detail: `Changed a member's role to ${ROLE_LABELS[data.role]}`,
   });
   const updated = await Workspace.findById(id).populate("members.user", "name email avatarColor designation active");
   return json({ workspace: updated });
@@ -107,8 +105,8 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
   const myRole = await getWorkspaceRole(user, id);
   const removingSelf = userId === String(user!._id);
-  if (myRole !== "workspace_admin" && !removingSelf) {
-    return error("Only workspace admins can remove members", 403);
+  if (!isWorkspaceManager(myRole) && !removingSelf) {
+    return error("Only workspace owners and admins can remove members", 403);
   }
 
   const workspace = await Workspace.findById(id);
@@ -119,11 +117,18 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   workspace.members = workspace.members.filter((m: any) => String(m.user) !== userId);
   await workspace.save();
 
+  // Cascade: removing someone from the workspace revokes their access to every
+  // project in it (otherwise they'd keep project access via their membership).
+  await Project.updateMany({ workspace: id }, { $pull: { members: { user: userId } } });
+  // If they led any project, hand the lead back to the workspace owner so the
+  // project isn't left with a lead who no longer has access.
+  await Project.updateMany({ workspace: id, lead: userId }, { $set: { lead: workspace.owner } });
+
   await logActivity({
     workspace: id,
     user: String(user!._id),
     action: "workspace.member_removed",
-    detail: removingSelf ? "Left the workspace" : "Removed a member",
+    detail: removingSelf ? "Left the workspace (removed from all projects)" : "Removed a member (revoked from all projects)",
   });
   return json({ ok: true });
 }
