@@ -221,8 +221,9 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { projects, workspaces } = useApp();
   const projectMatch = pathname.match(/^\/p\/([a-f0-9]{24})/);
   const activeProjectId = projectMatch?.[1];
-  // Navigating closes the sidebar only when it's a mobile overlay; on desktop it stays open.
-  const closeOnNav = () => { if (typeof window !== "undefined" && window.innerWidth < 1024) onClose(); };
+  // Navigation never closes the sidebar automatically — only the collapse button
+  // (or, on mobile, tapping the backdrop) closes it.
+  const closeOnNav = () => {};
 
   return (
     <>
