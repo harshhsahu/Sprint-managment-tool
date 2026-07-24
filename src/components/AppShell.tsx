@@ -221,6 +221,8 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { projects, workspaces } = useApp();
   const projectMatch = pathname.match(/^\/p\/([a-f0-9]{24})/);
   const activeProjectId = projectMatch?.[1];
+  // Navigating closes the sidebar only when it's a mobile overlay; on desktop it stays open.
+  const closeOnNav = () => { if (typeof window !== "undefined" && window.innerWidth < 1024) onClose(); };
 
   return (
     <>
@@ -239,20 +241,20 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
         </div>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 pb-4">
-          <NavLink href="/dashboard" icon={<LayoutDashboard size={16} />} label="Dashboard" onClose={onClose} />
-          <NavLink href="/my-tasks" icon={<ListChecks size={16} />} label="My Tasks" onClose={onClose} />
-          <NavLink href="/workspaces" icon={<Users size={16} />} label="Workspaces" onClose={onClose} />
+          <NavLink href="/dashboard" icon={<LayoutDashboard size={16} />} label="Dashboard" onClose={closeOnNav} />
+          <NavLink href="/my-tasks" icon={<ListChecks size={16} />} label="My Tasks" onClose={closeOnNav} />
+          <NavLink href="/workspaces" icon={<Users size={16} />} label="Workspaces" onClose={closeOnNav} />
 
           <div className="pt-4">
             <div className="mb-1 flex items-center justify-between px-3">
               <span className="text-xs font-semibold uppercase tracking-wide text-muted">Projects</span>
-              <Link href="/workspaces" onClick={onClose} className="text-muted hover:text-accent" title="New project"><Plus size={14} /></Link>
+              <Link href="/workspaces" onClick={closeOnNav} className="text-muted hover:text-accent" title="New project"><Plus size={14} /></Link>
             </div>
             {projects.map((p: Any) => (
               <div key={p._id}>
                 <Link
                   href={`/p/${p._id}/board`}
-                  onClick={onClose}
+                  onClick={closeOnNav}
                   className={cn(
                     "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm",
                     activeProjectId === p._id ? "bg-accent/10 font-medium text-accent" : "text-muted hover:bg-line/40 hover:text-foreground"
@@ -264,14 +266,14 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
                 </Link>
                 {activeProjectId === p._id && (
                   <div className="ml-4 mt-0.5 space-y-0.5 border-l border-line pl-2">
-                    <NavLink href={`/p/${p._id}/board`} icon={<Kanban size={14} />} label="Board" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/backlog`} icon={<Rows3 size={14} />} label="Backlog & Sprints" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/list`} icon={<ListChecks size={14} />} label="List" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/calendar`} icon={<Calendar size={14} />} label="Calendar" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/timeline`} icon={<GanttChartSquare size={14} />} label="Timeline" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/reports`} icon={<BarChart3 size={14} />} label="Reports" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/activity`} icon={<History size={14} />} label="Activity" onClose={onClose} />
-                    <NavLink href={`/p/${p._id}/settings`} icon={<Settings size={14} />} label="Settings" onClose={onClose} />
+                    <NavLink href={`/p/${p._id}/board`} icon={<Kanban size={14} />} label="Board" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/backlog`} icon={<Rows3 size={14} />} label="Backlog & Sprints" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/list`} icon={<ListChecks size={14} />} label="List" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/calendar`} icon={<Calendar size={14} />} label="Calendar" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/timeline`} icon={<GanttChartSquare size={14} />} label="Timeline" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/reports`} icon={<BarChart3 size={14} />} label="Reports" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/activity`} icon={<History size={14} />} label="Activity" onClose={closeOnNav} />
+                    <NavLink href={`/p/${p._id}/settings`} icon={<Settings size={14} />} label="Settings" onClose={closeOnNav} />
                   </div>
                 )}
               </div>
