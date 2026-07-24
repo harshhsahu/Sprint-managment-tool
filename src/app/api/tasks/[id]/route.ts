@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Task, Comment, Activity, Project } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
 import { TASK_TYPES, PRIORITIES } from "@/lib/constants";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -30,7 +30,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
       .sort("order"),
   ]);
 
-  return json({ task, comments, activity, subtasks, myRole: role });
+  const myCapabilities = [...(await getCapabilities(user, String(task.project)))];
+  return json({ task, comments, activity, subtasks, myRole: role, myCapabilities });
 }
 
 const patchSchema = z.object({
@@ -59,8 +60,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const task = await Task.findById(id);
   if (!task) return error("Task not found", 404);
 
-  const role = await getProjectRole(user, String(task.project));
-  if (!roleAtLeast(role, "developer")) return error("You don't have permission to edit tasks", 403);
+  if (!(await can(user, String(task.project), "task:edit"))) return error("You don't have permission to edit tasks", 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
@@ -149,8 +149,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const task = await Task.findById(id);
   if (!task) return error("Task not found", 404);
 
-  const role = await getProjectRole(user, String(task.project));
-  if (!roleAtLeast(role, "team_lead")) return error("Only team leads and above can delete tasks", 403);
+  if (!(await can(user, String(task.project), "task:delete"))) return error("You don't have permission to delete tasks", 403);
 
   await Task.deleteMany({ parentTask: id });
   await Comment.deleteMany({ task: id });

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Task, Comment, User } from "@/models";
-import { getProjectRole } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
 
 const schema = z.object({ body: z.string().min(1).max(10000) });
 
@@ -13,8 +13,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const task = await Task.findById(id);
   if (!task) return error("Task not found", 404);
 
-  const role = await getProjectRole(user, String(task.project));
-  if (!role || role === "viewer") return error("You don't have permission to comment", 403);
+  if (!(await can(user, String(task.project), "task:comment"))) return error("You don't have permission to comment", 403);
 
   const { data, res: bodyErr } = await parseBody(req, schema);
   if (bodyErr) return bodyErr;

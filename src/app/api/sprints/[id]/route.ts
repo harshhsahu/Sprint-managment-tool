@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Sprint, Task, Project } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
 
 const patchSchema = z.object({
   name: z.string().min(1).max(80).optional(),
@@ -21,8 +21,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   const sprint = await Sprint.findById(id);
   if (!sprint) return error("Sprint not found", 404);
 
-  const role = await getProjectRole(user, String(sprint.project));
-  if (!roleAtLeast(role, "team_lead")) return error("Only team leads and above can manage sprints", 403);
+  if (!(await can(user, String(sprint.project), "sprint:manage"))) return error("You don't have permission to manage sprints", 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
@@ -120,8 +119,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   const sprint = await Sprint.findById(id);
   if (!sprint) return error("Sprint not found", 404);
 
-  const role = await getProjectRole(user, String(sprint.project));
-  if (!roleAtLeast(role, "team_lead")) return error("Only team leads and above can delete sprints", 403);
+  if (!(await can(user, String(sprint.project), "sprint:manage"))) return error("You don't have permission to delete sprints", 403);
   if (sprint.status === "active") return error("Cannot delete an active sprint. Complete it first.", 400);
 
   await Task.updateMany({ sprint: id }, { $set: { sprint: null } });

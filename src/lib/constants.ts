@@ -39,6 +39,43 @@ export const ROLE_LABELS: Record<string, string> = {
   viewer: "Viewer",
 };
 
+/* ---------------------- Capabilities (RBAC) ----------------------
+   Permissions are capability-based. Built-in roles map to a fixed set of
+   capabilities; workspace-defined custom roles pick their own set. */
+export const CAPABILITIES = [
+  "project:view",
+  "task:create",
+  "task:edit",
+  "task:delete",
+  "task:comment",
+  "sprint:manage",
+  "member:manage",
+  "project:manage",
+] as const;
+export type Capability = (typeof CAPABILITIES)[number];
+
+export const CAPABILITY_LABELS: Record<Capability, string> = {
+  "project:view": "View project & tasks",
+  "task:create": "Create tasks",
+  "task:edit": "Edit tasks (status, fields, drag & drop)",
+  "task:delete": "Delete tasks",
+  "task:comment": "Comment on tasks",
+  "sprint:manage": "Create & run sprints",
+  "member:manage": "Manage project members & roles",
+  "project:manage": "Edit project settings & delete project",
+};
+
+const ALL_CAPS: Capability[] = [...CAPABILITIES];
+
+/** Capabilities granted by each built-in project role. */
+export const BUILTIN_ROLE_CAPS: Record<ProjectRole, Capability[]> = {
+  project_admin: ALL_CAPS,
+  team_lead: ["project:view", "task:create", "task:edit", "task:delete", "task:comment", "sprint:manage"],
+  developer: ["project:view", "task:create", "task:edit", "task:comment"],
+  qa: ["project:view", "task:create", "task:edit", "task:comment"],
+  viewer: ["project:view"],
+};
+
 export const DEFAULT_STATUSES = [
   { id: "backlog", name: "Backlog", color: "#64748b", category: "todo", order: 0, wipLimit: 0 },
   { id: "todo", name: "To Do", color: "#3b82f6", category: "todo", order: 1, wipLimit: 0 },

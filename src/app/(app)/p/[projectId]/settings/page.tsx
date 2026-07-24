@@ -14,7 +14,7 @@ import { PROJECT_ROLES, ROLE_LABELS, STATUS_CATEGORIES } from "@/lib/constants";
 export default function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const router = useRouter();
-  const { project, myRole, mutate } = useProject(projectId);
+  const { project, myRole, myCapabilities, mutate } = useProject(projectId);
   const { refresh } = useApp();
   const [statuses, setStatuses] = useState<Any[]>([]);
   const [labels, setLabels] = useState<Any[]>([]);
@@ -25,7 +25,8 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const [err, setErr] = useState("");
 
   const { data: usersData } = useSWR<Any>("/api/users", fetcher);
-  const isAdmin = myRole === "project_admin";
+  const isAdmin = myCapabilities.includes("project:manage");
+  const canManageMembers = myCapabilities.includes("member:manage");
 
   useEffect(() => {
     if (project) {
@@ -76,6 +77,10 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
 
   const memberIds = new Set((project.members || []).map((m: Any) => m.user?._id));
   const candidates = (usersData?.users || []).filter((u: Any) => !memberIds.has(u._id));
+  const roleOptions: { id: string; name: string }[] = [
+    ...PROJECT_ROLES.map((r) => ({ id: r, name: ROLE_LABELS[r] })),
+    ...((project.workspace?.customRoles || []) as Any[]).map((r) => ({ id: r.id, name: `${r.name} (custom)` })),
+  ];
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-5 pb-16">
@@ -97,14 +102,14 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       {/* members */}
       <section className="card p-5">
         <h2 className="mb-3 font-semibold">Members & roles</h2>
-        {isAdmin && (
+        {canManageMembers && (
           <div className="mb-4 flex flex-wrap gap-2">
             <select className="input !w-64" value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
               <option value="">Add a user…</option>
               {candidates.map((u: Any) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
             </select>
             <select className="input !w-40" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
-              {PROJECT_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+              {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
             <button className="btn-primary" onClick={addMember} disabled={!addUserId}><Plus size={14} /> Add</button>
           </div>
@@ -120,12 +125,13 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
               <select
                 className="ml-auto rounded border border-line bg-card px-2 py-1 text-xs"
                 value={m.role}
-                disabled={!isAdmin}
+                disabled={!canManageMembers}
                 onChange={async (e) => { await api(`/api/projects/${projectId}/members`, "PATCH", { userId: m.user._id, role: e.target.value }); mutate(); }}
               >
-                {PROJECT_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
+                {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+                {!roleOptions.some((r) => r.id === m.role) && <option value={m.role}>{m.role}</option>}
               </select>
-              {isAdmin && (
+              {canManageMembers && (
                 <button className="text-xs text-red-500 hover:underline" onClick={async () => { await api(`/api/projects/${projectId}/members?userId=${m.user._id}`, "DELETE"); mutate(); }}>
                   Remove
                 </button>

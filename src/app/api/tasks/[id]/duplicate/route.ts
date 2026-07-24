@@ -1,6 +1,6 @@
 import { withAuth, json, error, logActivity } from "@/lib/apiHelpers";
 import { Task, Project } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -10,8 +10,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
   const src = await Task.findById(id);
   if (!src) return error("Task not found", 404);
 
-  const role = await getProjectRole(user, String(src.project));
-  if (!roleAtLeast(role, "developer")) return error("You don't have permission to duplicate tasks", 403);
+  if (!(await can(user, String(src.project), "task:create"))) return error("You don't have permission to duplicate tasks", 403);
 
   const project = await Project.findByIdAndUpdate(src.project, { $inc: { taskCounter: 1 } }, { new: true });
   if (!project) return error("Project not found", 404);

@@ -14,7 +14,12 @@ export type Any = any;
 /* ------------------------------ data hooks ----------------------------- */
 export function useProject(projectId: string) {
   const { data, mutate } = useSWR<Any>(projectId ? `/api/projects/${projectId}` : null, fetcher);
-  return { project: data?.project, myRole: data?.myRole, mutate };
+  return {
+    project: data?.project,
+    myRole: data?.myRole,
+    myCapabilities: (data?.myCapabilities || []) as string[],
+    mutate,
+  };
 }
 
 export interface TaskFilters {

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Sprint } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { getProjectRole, can } from "@/lib/permissions";
 
 export async function GET(req: Request) {
   const { user, res } = await withAuth();
@@ -37,8 +37,7 @@ export async function POST(req: Request) {
   const { data, res: bodyErr } = await parseBody(req, createSchema);
   if (bodyErr) return bodyErr;
 
-  const role = await getProjectRole(user, data.project);
-  if (!roleAtLeast(role, "team_lead")) return error("Only team leads and above can manage sprints", 403);
+  if (!(await can(user, data.project, "sprint:manage"))) return error("You don't have permission to manage sprints", 403);
 
   const sprint = await Sprint.create({
     project: data.project,

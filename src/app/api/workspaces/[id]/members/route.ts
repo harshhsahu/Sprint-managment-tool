@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
-import { Workspace, User } from "@/models";
+import { Workspace, User, Project } from "@/models";
 import { getWorkspaceRole } from "@/lib/permissions";
 
 const addSchema = z.object({
@@ -34,6 +34,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   workspace.members.push({ user: invitee._id, role: data.role });
   await workspace.save();
 
+  // Automatically add the invitee to every project in the workspace.
+  const projectRole = data.role === "workspace_admin" ? "project_admin" : "developer";
+  const projects = await Project.find({ workspace: id });
+  for (const project of projects) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (project.members.some((m: any) => String(m.user) === String(invitee._id))) continue;
+    project.members.push({ user: invitee._id, role: projectRole });
+    await project.save();
+  }
+
   await notify({
     user: String(invitee._id),
     type: "invite",
@@ -45,7 +55,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     workspace: id,
     user: String(user!._id),
     action: "workspace.member_added",
-    detail: `Added ${invitee.name} as ${data.role.replace("_", " ")}`,
+    detail: `Added ${invitee.name} as ${data.role.replace("_", " ")} (added to ${projects.length} project(s))`,
   });
 
   const updated = await Workspace.findById(id).populate("members.user", "name email avatarColor designation active");

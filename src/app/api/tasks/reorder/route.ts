@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody } from "@/lib/apiHelpers";
 import { Task } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
 
 const schema = z.object({
   project: z.string(),
@@ -26,8 +26,7 @@ export async function POST(req: Request) {
   const { data, res: bodyErr } = await parseBody(req, schema);
   if (bodyErr) return bodyErr;
 
-  const role = await getProjectRole(user, data.project);
-  if (!roleAtLeast(role, "developer")) return error("You don't have permission to reorder tasks", 403);
+  if (!(await can(user, data.project, "task:edit"))) return error("You don't have permission to reorder tasks", 403);
 
   const ops = data.updates.map((u) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

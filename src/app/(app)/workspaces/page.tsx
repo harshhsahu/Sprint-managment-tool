@@ -3,11 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { Plus, FolderKanban, Users, Settings, Trash2 } from "lucide-react";
+import { Plus, FolderKanban, Users, Settings, Trash2, Shield } from "lucide-react";
 import { fetcher, api } from "@/lib/client";
 import { Modal, Avatar, Spinner, EmptyState } from "@/components/ui";
 import { useApp } from "@/components/AppShell";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, CAPABILITIES, CAPABILITY_LABELS, type Capability } from "@/lib/constants";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -19,6 +19,7 @@ export default function WorkspacesPage() {
   const [createWs, setCreateWs] = useState(false);
   const [createProjIn, setCreateProjIn] = useState<Any>(null);
   const [manageWs, setManageWs] = useState<Any>(null);
+  const [rolesWs, setRolesWs] = useState<Any>(null);
   const [form, setForm] = useState({ name: "", description: "", key: "" });
   const [invite, setInvite] = useState({ email: "", role: "member" });
   const [err, setErr] = useState("");
@@ -110,6 +111,9 @@ export default function WorkspacesPage() {
                   </span>
                   {isWsAdmin(ws) && (
                     <>
+                      <button className="btn-ghost !p-2" title="Custom roles" onClick={() => { setErr(""); setRolesWs(ws); }}>
+                        <Shield size={14} />
+                      </button>
                       <button className="btn-ghost !p-2" title="Members & settings" onClick={() => { setErr(""); setManageWs(ws); }}>
                         <Settings size={14} />
                       </button>
@@ -220,6 +224,73 @@ export default function WorkspacesPage() {
           </div>
         )}
       </Modal>
+
+      {rolesWs && (
+        <RolesModal ws={rolesWs} onClose={() => setRolesWs(null)} onSaved={(w) => { setRolesWs(w); mutate(); }} />
+      )}
     </div>
+  );
+}
+
+/* ---------------------- custom roles management ---------------------- */
+function RolesModal({ ws, onClose, onSaved }: { ws: Any; onClose: () => void; onSaved: (w: Any) => void }) {
+  const [roles, setRoles] = useState<Any[]>(() => (ws.customRoles || []).map((r: Any) => ({ ...r, capabilities: [...(r.capabilities || [])] })));
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const addRole = () =>
+    setRoles([...roles, { id: `role_${Date.now().toString(36)}_${roles.length}`, name: "New role", capabilities: ["project:view"] }]);
+
+  const toggleCap = (i: number, cap: Capability) =>
+    setRoles(roles.map((r, ri) => (ri === i ? { ...r, capabilities: r.capabilities.includes(cap) ? r.capabilities.filter((c: string) => c !== cap) : [...r.capabilities, cap] } : r)));
+
+  async function save() {
+    setErr(""); setBusy(true);
+    try {
+      const res = await api<Any>(`/api/workspaces/${ws._id}`, "PATCH", {
+        customRoles: roles.map((r) => ({ id: r.id, name: r.name, capabilities: r.capabilities })),
+      });
+      onSaved({ ...ws, customRoles: res.workspace.customRoles });
+      onClose();
+    } catch (e) { setErr((e as Error).message); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open onClose={onClose} wide title={`Custom roles — ${ws.name}`}>
+      <p className="mb-3 text-sm text-muted">
+        Define reusable roles for project members. Pick exactly which actions each role can perform.
+        Built-in roles (Project Admin, Team Lead, Developer, QA, Viewer) are always available too.
+      </p>
+      <div className="space-y-4">
+        {roles.map((r, i) => (
+          <div key={r.id} className="rounded-lg border border-line p-3">
+            <div className="mb-2 flex items-center gap-2">
+              <input
+                className="input !w-56 !py-1 text-sm font-medium"
+                value={r.name}
+                onChange={(e) => setRoles(roles.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))}
+              />
+              <button className="ml-auto text-xs text-red-500 hover:underline" onClick={() => setRoles(roles.filter((_, xi) => xi !== i))}>
+                Delete role
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {CAPABILITIES.map((cap) => (
+                <label key={cap} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <input type="checkbox" checked={r.capabilities.includes(cap)} onChange={() => toggleCap(i, cap)} />
+                  {CAPABILITY_LABELS[cap]}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+        {roles.length === 0 && <p className="text-sm text-muted">No custom roles yet.</p>}
+      </div>
+      {err && <p className="mt-3 text-sm text-red-500">{err}</p>}
+      <div className="mt-4 flex gap-2">
+        <button className="btn-ghost" onClick={addRole}><Plus size={14} /> Add role</button>
+        <button className="btn-primary ml-auto" onClick={save} disabled={busy}>{busy ? "Saving…" : "Save roles"}</button>
+      </div>
+    </Modal>
   );
 }

@@ -9,6 +9,7 @@
   --border: #e2e8f0;
   --muted: #64748b;
   --accent: #4f46e5;
+  color-scheme: light;
 }
 
 .dark {
@@ -18,6 +19,15 @@
   --border: #24304d;
   --muted: #8ea0bf;
   --accent: #6366f1;
+  color-scheme: dark;
+}
+
+/* Native select dropdown popups (rendered by the OS) must use readable
+   colors — without this, light text lands on a white popup on Windows. */
+select,
+option {
+  background-color: var(--card);
+  color: var(--foreground);
 }
 
 @theme inline {

@@ -45,8 +45,8 @@ function LoginForm() {
           {busy ? "Signing in…" : "Sign in"}
         </button>
       </form>
-      <div className="mt-4 flex justify-between text-sm">
-        <Link href="/forgot-password" className="text-accent hover:underline">Forgot password?</Link>
+      <div className="mt-4 text-center text-sm">
+        Don&apos;t have an account?{" "}
         <Link href="/register" className="text-accent hover:underline">Create account</Link>
       </div>
     </div>

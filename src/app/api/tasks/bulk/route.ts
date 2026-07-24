@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Task } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { can } from "@/lib/permissions";
 import { PRIORITIES } from "@/lib/constants";
 
 const schema = z.object({
@@ -28,8 +28,7 @@ export async function PATCH(req: Request) {
   const tasks = await Task.find({ _id: { $in: data.taskIds } }).select("project");
   const projectIds = [...new Set(tasks.map((t) => String(t.project)))];
   for (const pid of projectIds) {
-    const role = await getProjectRole(user, pid);
-    if (!roleAtLeast(role, "developer")) return error("You don't have permission on some of these tasks", 403);
+    if (!(await can(user, pid, "task:edit"))) return error("You don't have permission on some of these tasks", 403);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

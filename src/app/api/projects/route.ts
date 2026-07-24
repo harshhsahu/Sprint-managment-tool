@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Project, Workspace } from "@/models";
-import { getWorkspaceRole, isSuperAdmin } from "@/lib/permissions";
+import { getWorkspaceRole } from "@/lib/permissions";
 import { DEFAULT_STATUSES } from "@/lib/constants";
 
 export async function GET(req: Request) {
@@ -17,20 +17,19 @@ export async function GET(req: Request) {
     if (!role) return error("Access denied", 403);
     filter.workspace = workspaceId;
     // non-admin workspace members only see projects they belong to
-    if (role !== "workspace_admin" && !isSuperAdmin(user)) {
+    if (role !== "workspace_admin") {
       filter.$or = [{ "members.user": user!._id }, { lead: user!._id }];
     }
   } else {
-    if (!isSuperAdmin(user)) {
-      const myWorkspaces = await Workspace.find({
-        $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
-      }).select("_id");
-      filter.$or = [
-        { "members.user": user!._id },
-        { lead: user!._id },
-        { workspace: { $in: myWorkspaces.map((w) => w._id) } },
-      ];
-    }
+    // strict isolation: only projects the user belongs to, or in workspaces they admin
+    const myWorkspaces = await Workspace.find({
+      $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+    }).select("_id");
+    filter.$or = [
+      { "members.user": user!._id },
+      { lead: user!._id },
+      { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+    ];
   }
 
   const projects = await Project.find(filter)
@@ -64,13 +63,24 @@ export async function POST(req: Request) {
   const exists = await Project.findOne({ workspace: data.workspace, key: data.key.toUpperCase() });
   if (exists) return error(`A project with key ${data.key.toUpperCase()} already exists in this workspace`, 409);
 
+  // Seed the project with every workspace member (creator becomes project admin).
+  const ws = await Workspace.findById(data.workspace).select("members");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const members = ((ws?.members || []) as any[]).map((m) => ({
+    user: m.user,
+    role: String(m.user) === String(user!._id) ? "project_admin" : m.role === "workspace_admin" ? "project_admin" : "developer",
+  }));
+  if (!members.some((m) => String(m.user) === String(user!._id))) {
+    members.push({ user: user!._id, role: "project_admin" });
+  }
+
   const project = await Project.create({
     workspace: data.workspace,
     name: data.name,
     key: data.key.toUpperCase(),
     description: data.description || "",
     lead: user!._id,
-    members: [{ user: user!._id, role: "project_admin" }],
+    members,
     statuses: DEFAULT_STATUSES,
     labels: [
       { id: "frontend", name: "Frontend", color: "#3b82f6" },

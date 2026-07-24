@@ -1,21 +1,30 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
-import { Project, User } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
-import { PROJECT_ROLES } from "@/lib/constants";
+import { Project, User, Workspace } from "@/models";
+import { can } from "@/lib/permissions";
+import { PROJECT_ROLES, ROLE_LABELS } from "@/lib/constants";
 
-const addSchema = z.object({
-  userId: z.string(),
-  role: z.enum(PROJECT_ROLES).default("developer"),
-});
+/** A role is valid if it is a built-in project role or a custom role defined
+    on the project's workspace. */
+async function isValidRole(workspaceId: string, role: string): Promise<boolean> {
+  if ((PROJECT_ROLES as readonly string[]).includes(role)) return true;
+  const ws = await Workspace.findById(workspaceId).select("customRoles");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (ws?.customRoles || []).some((r: any) => r.id === role);
+}
+
+function roleLabel(role: string) {
+  return ROLE_LABELS[role] || role;
+}
+
+const addSchema = z.object({ userId: z.string(), role: z.string().default("developer") });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
   if (res) return res;
   const { id } = await params;
 
-  const myRole = await getProjectRole(user, id);
-  if (!roleAtLeast(myRole, "project_admin")) return error("Only project admins can add members", 403);
+  if (!(await can(user, id, "member:manage"))) return error("You don't have permission to add members", 403);
 
   const { data, res: bodyErr } = await parseBody(req, addSchema);
   if (bodyErr) return bodyErr;
@@ -25,6 +34,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
+  if (!(await isValidRole(String(project.workspace), data.role))) return error("Unknown role", 422);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   if (project.members.some((m: any) => String(m.user) === data.userId)) {
     return error("User is already a project member", 409);
@@ -45,28 +55,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     workspace: String(project.workspace),
     user: String(user!._id),
     action: "project.member_added",
-    detail: `Added ${member.name} as ${data.role.replace("_", " ")}`,
+    detail: `Added ${member.name} as ${roleLabel(data.role)}`,
   });
 
   const updated = await Project.findById(id).populate("members.user", "name email avatarColor designation active");
   return json({ project: updated }, 201);
 }
 
-const patchSchema = z.object({ userId: z.string(), role: z.enum(PROJECT_ROLES) });
+const patchSchema = z.object({ userId: z.string(), role: z.string() });
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
   if (res) return res;
   const { id } = await params;
 
-  const myRole = await getProjectRole(user, id);
-  if (!roleAtLeast(myRole, "project_admin")) return error("Only project admins can change roles", 403);
+  if (!(await can(user, id, "member:manage"))) return error("You don't have permission to change roles", 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
 
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
+  if (!(await isValidRole(String(project.workspace), data.role))) return error("Unknown role", 422);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const member = project.members.find((m: any) => String(m.user) === data.userId);
   if (!member) return error("Member not found", 404);
@@ -79,7 +89,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     workspace: String(project.workspace),
     user: String(user!._id),
     action: "project.role_changed",
-    detail: `Changed a member's role to ${data.role.replace("_", " ")}`,
+    detail: `Changed a member's role to ${roleLabel(data.role)}`,
   });
   const updated = await Project.findById(id).populate("members.user", "name email avatarColor designation active");
   return json({ project: updated });
@@ -93,9 +103,9 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const userId = searchParams.get("userId");
   if (!userId) return error("userId is required");
 
-  const myRole = await getProjectRole(user, id);
-  if (!roleAtLeast(myRole, "project_admin") && userId !== String(user!._id)) {
-    return error("Only project admins can remove members", 403);
+  const removingSelf = userId === String(user!._id);
+  if (!removingSelf && !(await can(user, id, "member:manage"))) {
+    return error("You don't have permission to remove members", 403);
   }
 
   const project = await Project.findById(id);
@@ -110,7 +120,7 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
     workspace: String(project.workspace),
     user: String(user!._id),
     action: "project.member_removed",
-    detail: userId === String(user!._id) ? "Left the project" : "Removed a member",
+    detail: removingSelf ? "Left the project" : "Removed a member",
   });
   return json({ ok: true });
 }

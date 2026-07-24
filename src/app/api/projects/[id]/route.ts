@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Project, Task, Sprint } from "@/models";
-import { getProjectRole, roleAtLeast } from "@/lib/permissions";
+import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -14,9 +14,10 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const project = await Project.findById(id)
     .populate("lead", "name email avatarColor")
     .populate("members.user", "name email avatarColor designation active")
-    .populate("workspace", "name");
+    .populate("workspace", "name customRoles");
   if (!project) return error("Project not found", 404);
-  return json({ project, myRole: role });
+  const myCapabilities = [...(await getCapabilities(user, id))];
+  return json({ project, myRole: role, myCapabilities });
 }
 
 const statusSchema = z.object({
@@ -44,8 +45,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (res) return res;
   const { id } = await params;
 
-  const role = await getProjectRole(user, id);
-  if (!roleAtLeast(role, "project_admin")) return error("Only project admins can update project settings", 403);
+  if (!(await can(user, id, "project:manage"))) return error("You don't have permission to update project settings", 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
@@ -80,8 +80,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
   if (res) return res;
   const { id } = await params;
 
-  const role = await getProjectRole(user, id);
-  if (!roleAtLeast(role, "project_admin")) return error("Only project admins can delete the project", 403);
+  if (!(await can(user, id, "project:manage"))) return error("You don't have permission to delete the project", 403);
 
   await Task.deleteMany({ project: id });
   await Sprint.deleteMany({ project: id });

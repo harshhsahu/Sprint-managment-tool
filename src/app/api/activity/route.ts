@@ -1,6 +1,6 @@
 import { withAuth, json, error } from "@/lib/apiHelpers";
 import { Activity } from "@/models";
-import { getProjectRole, isSuperAdmin } from "@/lib/permissions";
+import { getProjectRole } from "@/lib/permissions";
 
 /** Activity / audit log. ?project= or ?task= or ?user=me, paginated. */
 export async function GET(req: Request) {
@@ -20,8 +20,8 @@ export async function GET(req: Request) {
   }
   if (sp.get("task")) filter.task = sp.get("task");
   if (sp.get("user") === "me") filter.user = user!._id;
-  if (!projectId && sp.get("user") !== "me" && !isSuperAdmin(user)) {
-    filter.user = user!._id; // non-admins can't browse the global audit log
+  if (!projectId && sp.get("user") !== "me") {
+    filter.user = user!._id; // without a project scope, users only see their own activity
   }
 
   const [items, total] = await Promise.all([

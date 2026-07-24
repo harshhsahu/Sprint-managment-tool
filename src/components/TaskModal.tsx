@@ -44,12 +44,32 @@ export default function TaskModal({
   const [editingDesc, setEditingDesc] = useState(false);
   const [desc, setDesc] = useState("");
   const [busy, setBusy] = useState(false);
+  const [labels, setLabels] = useState<Any[]>(project?.labels || []);
+  const [newLabel, setNewLabel] = useState("");
+  const [addingLabel, setAddingLabel] = useState(false);
 
   const task = data?.task;
-  const canEdit = data?.myRole && data.myRole !== "viewer";
+  const caps: string[] = data?.myCapabilities || [];
+  const has = (c: string) => caps.includes(c);
+  const canEdit = has("task:edit");
+  const canComment = has("task:comment");
   const members: Any[] = project?.members || [];
   const statuses: Any[] = project?.statuses || [];
-  const labels: Any[] = project?.labels || [];
+
+  async function createLabel(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newLabel.trim();
+    if (!name) return;
+    try {
+      const res = await api<Any>(`/api/projects/${project._id}/labels`, "POST", { name });
+      setLabels(res.labels);
+      setNewLabel("");
+      setAddingLabel(false);
+      await patch({ labels: [...(task.labels || []), res.label.id] });
+    } catch (err) {
+      alert((err as Error).message);
+    }
+  }
 
   const { data: sprintData } = useSWR<Any>(project?._id ? `/api/sprints?project=${project._id}` : null, fetcher);
   const { data: epicsData } = useSWR<Any>(project?._id ? `/api/tasks?project=${project._id}&type=epic&limit=50` : null, fetcher);
@@ -226,7 +246,7 @@ export default function TaskModal({
                       </div>
                     ))}
                   </div>
-                  {canEdit && (
+                  {canComment && (
                     <form onSubmit={addComment} className="mt-3">
                       <textarea
                         className="input min-h-16 text-sm"
@@ -321,7 +341,7 @@ export default function TaskModal({
               />
             </Field>
             <Field label="Labels">
-              <div className="flex flex-wrap gap-1 px-2">
+              <div className="flex flex-wrap items-center gap-1 px-2">
                 {labels.map((l: Any) => {
                   const active = task.labels?.includes(l.id);
                   return (
@@ -336,7 +356,25 @@ export default function TaskModal({
                     </button>
                   );
                 })}
+                {canEdit && !addingLabel && (
+                  <button className="chip cursor-pointer" style={{ border: "1px dashed var(--border)", color: "var(--muted)" }} onClick={() => setAddingLabel(true)}>
+                    <Plus size={11} /> Label
+                  </button>
+                )}
               </div>
+              {canEdit && addingLabel && (
+                <form onSubmit={createLabel} className="mt-1.5 flex gap-1.5 px-2">
+                  <input
+                    className="input !py-1 text-xs"
+                    placeholder="New label name"
+                    value={newLabel}
+                    autoFocus
+                    onChange={(e) => setNewLabel(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Escape") { setAddingLabel(false); setNewLabel(""); } }}
+                  />
+                  <button className="btn-primary !px-2 !py-1 text-xs" disabled={!newLabel.trim()}>Add</button>
+                </form>
+              )}
             </Field>
             <Field label="Watchers">
               <span className="flex items-center gap-1 px-2">
@@ -356,7 +394,7 @@ export default function TaskModal({
                 <button className="btn-ghost !px-2 !py-1.5 text-xs" onClick={() => patch({ archived: !task.archived })} title={task.archived ? "Unarchive" : "Archive"}>
                   <Archive size={13} /> {task.archived ? "Unarchive" : "Archive"}
                 </button>
-                {(data.myRole === "team_lead" || data.myRole === "project_admin") && (
+                {has("task:delete") && (
                   <button className="btn-ghost !px-2 !py-1.5 text-xs text-red-500" onClick={remove}><Trash2 size={13} /> Delete</button>
                 )}
               </div>

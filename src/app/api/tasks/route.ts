@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
-import { Task, Project } from "@/models";
-import { getProjectRole, roleAtLeast, isSuperAdmin } from "@/lib/permissions";
+import { Task, Project, Workspace } from "@/models";
+import { getProjectRole, can } from "@/lib/permissions";
 import { TASK_TYPES, PRIORITIES } from "@/lib/constants";
 
 /** List tasks with rich filtering, sorting and pagination.
@@ -21,10 +21,17 @@ export async function GET(req: Request) {
     const role = await getProjectRole(user, projectId);
     if (!role) return error("Access denied", 403);
     filter.project = projectId;
-  } else if (!isSuperAdmin(user)) {
-    // cross-project queries (my tasks, global search) are limited to projects the user belongs to
+  } else {
+    // cross-project queries (my tasks) limited to projects the user can see
+    const myWorkspaces = await Workspace.find({
+      $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+    }).select("_id");
     const projects = await Project.find({
-      $or: [{ "members.user": user!._id }, { lead: user!._id }],
+      $or: [
+        { "members.user": user!._id },
+        { lead: user!._id },
+        { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+      ],
     }).select("_id");
     filter.project = { $in: projects.map((p) => p._id) };
   }
@@ -118,8 +125,7 @@ export async function POST(req: Request) {
   const { data, res: bodyErr } = await parseBody(req, createSchema);
   if (bodyErr) return bodyErr;
 
-  const role = await getProjectRole(user, data.project);
-  if (!roleAtLeast(role, "developer")) return error("You don't have permission to create tasks", 403);
+  if (!(await can(user, data.project, "task:create"))) return error("You don't have permission to create tasks", 403);
 
   const project = await Project.findByIdAndUpdate(
     data.project,

@@ -11,8 +11,6 @@ const UserSchema = new Schema(
     timezone: { type: String, default: "UTC" },
     avatarColor: { type: String, default: "" },
     active: { type: Boolean, default: true },
-    resetToken: { type: String, default: null },
-    resetTokenExpiry: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -26,12 +24,23 @@ const WorkspaceMemberSchema = new Schema(
   { _id: false }
 );
 
+const CustomRoleSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    capabilities: [{ type: String }],
+  },
+  { _id: false }
+);
+
 const WorkspaceSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     description: { type: String, default: "" },
     owner: { type: Types.ObjectId, ref: "User", required: true },
     members: [WorkspaceMemberSchema],
+    // Workspace-defined roles usable for project membership across the workspace.
+    customRoles: [CustomRoleSchema],
   },
   { timestamps: true }
 );
@@ -40,11 +49,9 @@ const WorkspaceSchema = new Schema(
 const ProjectMemberSchema = new Schema(
   {
     user: { type: Types.ObjectId, ref: "User", required: true },
-    role: {
-      type: String,
-      enum: ["project_admin", "team_lead", "developer", "qa", "viewer"],
-      default: "developer",
-    },
+    // built-in role id (project_admin/team_lead/developer/qa/viewer) OR a
+    // workspace custom-role id — validated in the API layer, not by enum.
+    role: { type: String, default: "developer" },
   },
   { _id: false }
 );

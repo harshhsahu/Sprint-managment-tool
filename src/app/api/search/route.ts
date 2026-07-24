@@ -1,6 +1,5 @@
 import { withAuth, json } from "@/lib/apiHelpers";
 import { Task, Project, Sprint, User, Workspace } from "@/models";
-import { isSuperAdmin } from "@/lib/permissions";
 
 /** Global search across tasks, projects, sprints and people. ?q= */
 export async function GET(req: Request) {
@@ -9,21 +8,17 @@ export async function GET(req: Request) {
   const q = new URL(req.url).searchParams.get("q")?.trim() || "";
   if (q.length < 2) return json({ tasks: [], projects: [], sprints: [], users: [] });
 
-  // restrict to projects the user can see
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let projectFilter: any = {};
-  if (!isSuperAdmin(user)) {
-    const myWorkspaces = await Workspace.find({
-      $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
-    }).select("_id");
-    projectFilter = {
-      $or: [
-        { "members.user": user!._id },
-        { lead: user!._id },
-        { workspace: { $in: myWorkspaces.map((w) => w._id) } },
-      ],
-    };
-  }
+  // restrict to projects the user can see (strict isolation)
+  const myWorkspaces = await Workspace.find({
+    $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+  }).select("_id");
+  const projectFilter = {
+    $or: [
+      { "members.user": user!._id },
+      { lead: user!._id },
+      { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+    ],
+  };
   const visibleProjects = await Project.find(projectFilter).select("_id name key");
   const projectIds = visibleProjects.map((p) => p._id);
 

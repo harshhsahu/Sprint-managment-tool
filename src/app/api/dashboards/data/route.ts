@@ -1,17 +1,22 @@
 import { withAuth, json } from "@/lib/apiHelpers";
-import { Task, Project, Sprint, Activity } from "@/models";
-import { isSuperAdmin } from "@/lib/permissions";
+import { Task, Project, Sprint, Activity, Workspace } from "@/models";
 
 /** Aggregated data for all dashboard widgets in one call. */
 export async function GET() {
   const { user, res } = await withAuth();
   if (res) return res;
 
-  // projects visible to this user
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const projFilter: any = isSuperAdmin(user)
-    ? {}
-    : { $or: [{ "members.user": user!._id }, { lead: user!._id }] };
+  // projects visible to this user (strict isolation): member/lead, or in a workspace they admin
+  const myWorkspaces = await Workspace.find({
+    $or: [{ owner: user!._id }, { "members.user": user!._id, "members.role": "workspace_admin" }],
+  }).select("_id");
+  const projFilter = {
+    $or: [
+      { "members.user": user!._id },
+      { lead: user!._id },
+      { workspace: { $in: myWorkspaces.map((w) => w._id) } },
+    ],
+  };
   const projects = await Project.find({ ...projFilter, archived: { $ne: true } }).select("_id name key statuses");
   const projectIds = projects.map((p) => p._id);
 
