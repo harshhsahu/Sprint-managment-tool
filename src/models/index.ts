@@ -45,6 +45,34 @@ const WorkspaceSchema = new Schema(
   { timestamps: true }
 );
 
+/* ------------------------ WorkspaceInvite ------------------------- */
+// A pending invitation to an email address that has no account yet.
+// Materialized into real membership when that email registers.
+const WorkspaceInviteSchema = new Schema(
+  {
+    workspace: { type: Types.ObjectId, ref: "Workspace", required: true, index: true },
+    email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    role: { type: String, enum: ["workspace_admin", "member"], default: "member" },
+    invitedBy: { type: Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+WorkspaceInviteSchema.index({ workspace: 1, email: 1 }, { unique: true });
+
+// A pending invitation to a single project for an email with no account yet.
+// Materialized into project membership when that email registers.
+const ProjectInviteSchema = new Schema(
+  {
+    project: { type: Types.ObjectId, ref: "Project", required: true, index: true },
+    workspace: { type: Types.ObjectId, ref: "Workspace", required: true, index: true },
+    email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    role: { type: String, default: "developer" }, // project role id (built-in or custom)
+    invitedBy: { type: Types.ObjectId, ref: "User" },
+  },
+  { timestamps: true }
+);
+ProjectInviteSchema.index({ project: 1, email: 1 }, { unique: true });
+
 /* ----------------------------- Project ---------------------------- */
 const ProjectMemberSchema = new Schema(
   {
@@ -240,6 +268,8 @@ const DashboardSchema = new Schema(
 
 export const User = models.User || model("User", UserSchema);
 export const Workspace = models.Workspace || model("Workspace", WorkspaceSchema);
+export const WorkspaceInvite = models.WorkspaceInvite || model("WorkspaceInvite", WorkspaceInviteSchema);
+export const ProjectInvite = models.ProjectInvite || model("ProjectInvite", ProjectInviteSchema);
 export const Project = models.Project || model("Project", ProjectSchema);
 export const Sprint = models.Sprint || model("Sprint", SprintSchema);
 export const Task = models.Task || model("Task", TaskSchema);

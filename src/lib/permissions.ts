@@ -40,12 +40,14 @@ export async function getProjectRole(user: UserDoc, projectId: string): Promise<
   const project = await Project.findById(projectId).select("members workspace lead");
   if (!project) return null;
   if (String(project.lead) === String(user._id)) return "project_admin";
+  // Workspace admins administer every project in their workspace — this takes
+  // precedence over any lower project-member role they may also hold (e.g. they
+  // were seeded/added as a plain "developer" when the project was created).
+  const wsRole = await getWorkspaceRole(user, String(project.workspace));
+  if (wsRole === "workspace_admin") return "project_admin";
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const m = project.members.find((m: any) => String(m.user) === String(user._id));
   if (m) return m.role;
-  // workspace admins administer every project in their workspace
-  const wsRole = await getWorkspaceRole(user, String(project.workspace));
-  if (wsRole === "workspace_admin") return "project_admin";
   return null;
 }
 

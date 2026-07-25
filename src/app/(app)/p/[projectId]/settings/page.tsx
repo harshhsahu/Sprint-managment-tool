@@ -14,12 +14,13 @@ import { PROJECT_ROLES, ROLE_LABELS, STATUS_CATEGORIES } from "@/lib/constants";
 export default function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const router = useRouter();
-  const { project, myRole, myCapabilities, mutate } = useProject(projectId);
+  const { project, myRole, myCapabilities, pendingInvites, mutate } = useProject(projectId);
   const { refresh } = useApp();
   const [statuses, setStatuses] = useState<Any[]>([]);
   const [labels, setLabels] = useState<Any[]>([]);
   const [info, setInfo] = useState({ name: "", description: "" });
   const [addUserId, setAddUserId] = useState("");
+  const [addEmail, setAddEmail] = useState("");
   const [addRole, setAddRole] = useState("developer");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
@@ -66,6 +67,25 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     } catch (e) { setErr((e as Error).message); }
   }
 
+  async function inviteByEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!addEmail) return;
+    setErr("");
+    try {
+      await api(`/api/projects/${projectId}/members`, "POST", { email: addEmail, role: addRole });
+      setAddEmail("");
+      mutate();
+    } catch (e) { setErr((e as Error).message); }
+  }
+
+  async function revokeInvite(email: string) {
+    setErr("");
+    try {
+      await api(`/api/projects/${projectId}/members?email=${encodeURIComponent(email)}`, "DELETE");
+      mutate();
+    } catch (e) { setErr((e as Error).message); }
+  }
+
   async function deleteProject() {
     if (!confirm(`Delete project "${project.name}" and ALL its tasks and sprints? This cannot be undone.`)) return;
     await api(`/api/projects/${projectId}`, "DELETE");
@@ -103,15 +123,46 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       <section className="card p-5">
         <h2 className="mb-3 font-semibold">Members & roles</h2>
         {canManageMembers && (
-          <div className="mb-4 flex flex-wrap gap-2">
-            <select className="input !w-64" value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
-              <option value="">Add a user…</option>
-              {candidates.map((u: Any) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
-            </select>
-            <select className="input !w-40" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
-              {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-            <button className="btn-primary" onClick={addMember} disabled={!addUserId}><Plus size={14} /> Add</button>
+          <div className="mb-4 space-y-2">
+            <div className="flex flex-wrap gap-2">
+              <select className="input !w-64" value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
+                <option value="">Add an existing user…</option>
+                {candidates.map((u: Any) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
+              </select>
+              <select className="input !w-40" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+                {roleOptions.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              <button className="btn-primary" onClick={addMember} disabled={!addUserId}><Plus size={14} /> Add</button>
+            </div>
+            <form onSubmit={inviteByEmail} className="flex flex-wrap gap-2">
+              <input className="input !w-64" type="email" placeholder="Invite by email…" value={addEmail} onChange={(e) => setAddEmail(e.target.value)} />
+              <button className="btn-ghost" type="submit" disabled={!addEmail}><Plus size={14} /> Invite</button>
+            </form>
+            <p className="text-xs text-muted">
+              Invite anyone by email — registered users join now; new people join automatically when they sign up with that email. New members take the role selected above.
+            </p>
+          </div>
+        )}
+
+        {canManageMembers && pendingInvites.length > 0 && (
+          <div className="mb-4 space-y-2">
+            <p className="text-xs font-medium text-muted">Pending invitations</p>
+            {pendingInvites.map((p: Any) => (
+              <div key={p.email} className="flex items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2">
+                <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-amber-500/15 text-amber-600 text-xs font-medium">
+                  {p.email[0]?.toUpperCase()}
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-medium">{p.email}</div>
+                  <div className="truncate text-xs text-muted">
+                    {ROLE_LABELS[p.role] || p.role} · <span className="text-amber-600">awaiting registration</span>
+                  </div>
+                </div>
+                <button className="ml-auto text-xs text-red-500 hover:underline" onClick={() => revokeInvite(p.email)}>
+                  Revoke
+                </button>
+              </div>
+            ))}
           </div>
         )}
         <div className="space-y-2">

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
-import { Workspace, Project, Task, Sprint } from "@/models";
+import { Workspace, Project, Task, Sprint, WorkspaceInvite } from "@/models";
 import { getWorkspaceRole } from "@/lib/permissions";
 import { CAPABILITIES } from "@/lib/constants";
 
@@ -16,7 +16,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .populate("owner", "name email avatarColor")
     .populate("members.user", "name email avatarColor designation active");
   if (!workspace) return error("Workspace not found", 404);
-  return json({ workspace, myRole: role });
+  const pendingInvites = await WorkspaceInvite.find({ workspace: id }).select("email role createdAt").sort({ createdAt: 1 });
+  return json({ workspace, myRole: role, pendingInvites });
 }
 
 const patchSchema = z.object({

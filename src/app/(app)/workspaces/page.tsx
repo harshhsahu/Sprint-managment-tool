@@ -19,6 +19,7 @@ export default function WorkspacesPage() {
   const [createWs, setCreateWs] = useState(false);
   const [createProjIn, setCreateProjIn] = useState<Any>(null);
   const [manageWs, setManageWs] = useState<Any>(null);
+  const [pending, setPending] = useState<Any[]>([]);
   const [rolesWs, setRolesWs] = useState<Any>(null);
   const [form, setForm] = useState({ name: "", description: "", key: "" });
   const [invite, setInvite] = useState({ email: "", role: "member" });
@@ -51,15 +52,32 @@ export default function WorkspacesPage() {
     } catch (e) { setErr((e as Error).message); }
   }
 
+  async function openManage(ws: Any) {
+    setErr("");
+    setManageWs(ws);
+    setPending([]);
+    try {
+      const res = await fetcher<Any>(`/api/workspaces/${ws._id}`);
+      setManageWs(res.workspace);
+      setPending(res.pendingInvites || []);
+    } catch (e) { setErr((e as Error).message); }
+  }
+
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     try {
       const res = await api<Any>(`/api/workspaces/${manageWs._id}/members`, "POST", invite);
       setManageWs(res.workspace);
+      if (res.pendingInvites) setPending(res.pendingInvites);
       setInvite({ email: "", role: "member" });
       mutate();
     } catch (e) { setErr((e as Error).message); }
+  }
+
+  async function revokeInvite(email: string) {
+    await api(`/api/workspaces/${manageWs._id}/members?email=${encodeURIComponent(email)}`, "DELETE");
+    setPending(pending.filter((p) => p.email !== email));
   }
 
   async function deleteWorkspace(ws: Any) {
@@ -114,7 +132,7 @@ export default function WorkspacesPage() {
                       <button className="btn-ghost !p-2" title="Custom roles" onClick={() => { setErr(""); setRolesWs(ws); }}>
                         <Shield size={14} />
                       </button>
-                      <button className="btn-ghost !p-2" title="Members & settings" onClick={() => { setErr(""); setManageWs(ws); }}>
+                      <button className="btn-ghost !p-2" title="Members & settings" onClick={() => openManage(ws)}>
                         <Settings size={14} />
                       </button>
                       <button className="btn-ghost !p-2 text-red-500" title="Delete workspace" onClick={() => deleteWorkspace(ws)}>
@@ -186,7 +204,33 @@ export default function WorkspacesPage() {
               </select>
               <button className="btn-primary shrink-0">Invite</button>
             </form>
+            <p className="-mt-2 text-xs text-muted">
+              New to the app? Invite them anyway — they’ll join automatically as soon as they register with this email.
+            </p>
             {err && <p className="text-sm text-red-500">{err}</p>}
+
+            {pending.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted">Pending invitations</p>
+                {pending.map((p: Any) => (
+                  <div key={p.email} className="flex items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2">
+                    <span className="flex h-[26px] w-[26px] items-center justify-center rounded-full bg-amber-500/15 text-amber-600 text-xs font-medium">
+                      {p.email[0]?.toUpperCase()}
+                    </span>
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium">{p.email}</div>
+                      <div className="truncate text-xs text-muted">
+                        {ROLE_LABELS[p.role] || p.role} · <span className="text-amber-600">awaiting registration</span>
+                      </div>
+                    </div>
+                    <button className="ml-auto text-xs text-red-500 hover:underline" onClick={() => revokeInvite(p.email)}>
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
             <div className="space-y-2">
               {manageWs.members?.map((m: Any) => (
                 <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">

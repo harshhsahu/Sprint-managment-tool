@@ -5,6 +5,7 @@ import { User } from "@/models";
 import { json, error, parseBody } from "@/lib/apiHelpers";
 import { signSession, SESSION_COOKIE } from "@/lib/auth";
 import { avatarColor } from "@/lib/utils";
+import { materializePendingInvites } from "@/lib/invites";
 import { cookies } from "next/headers";
 
 const schema = z.object({
@@ -35,6 +36,14 @@ export async function POST(req: Request) {
     avatarColor: avatarColor(data.email),
     role: isFirstUser ? "super_admin" : "member", // first user becomes super admin
   });
+
+  // Join any workspaces this email was invited to before it had an account.
+  // Never let a hiccup here block account creation.
+  try {
+    await materializePendingInvites(user);
+  } catch (e) {
+    console.error("Failed to apply pending invites on registration", e);
+  }
 
   const token = await signSession({
     userId: String(user._id),

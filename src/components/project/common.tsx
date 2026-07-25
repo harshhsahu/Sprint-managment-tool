@@ -18,6 +18,7 @@ export function useProject(projectId: string) {
     project: data?.project,
     myRole: data?.myRole,
     myCapabilities: (data?.myCapabilities || []) as string[],
+    pendingInvites: (data?.pendingInvites || []) as Any[],
     mutate,
   };
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
-import { Project, Task, Sprint } from "@/models";
+import { Project, Task, Sprint, ProjectInvite } from "@/models";
 import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -17,7 +17,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     .populate("workspace", "name customRoles");
   if (!project) return error("Project not found", 404);
   const myCapabilities = [...(await getCapabilities(user, id))];
-  return json({ project, myRole: role, myCapabilities });
+  const pendingInvites = await ProjectInvite.find({ project: id }).select("email role createdAt").sort({ createdAt: 1 });
+  return json({ project, myRole: role, myCapabilities, pendingInvites });
 }
 
 const statusSchema = z.object({

@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
-import { Project, User, Workspace } from "@/models";
+import { Project, User, Workspace, ProjectInvite } from "@/models";
 import { can } from "@/lib/permissions";
+import { addUserToProject } from "@/lib/invites";
 import { PROJECT_ROLES, ROLE_LABELS } from "@/lib/constants";
 
 /** A role is valid if it is a built-in project role or a custom role defined
@@ -17,7 +18,13 @@ function roleLabel(role: string) {
   return ROLE_LABELS[role] || role;
 }
 
-const addSchema = z.object({ userId: z.string(), role: z.string().default("developer") });
+const addSchema = z
+  .object({
+    userId: z.string().optional(),
+    email: z.string().email().optional(),
+    role: z.string().default("developer"),
+  })
+  .refine((d) => d.userId || d.email, { message: "userId or email is required" });
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -29,22 +36,48 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const { data, res: bodyErr } = await parseBody(req, addSchema);
   if (bodyErr) return bodyErr;
 
-  const member = await User.findById(data.userId);
-  if (!member || !member.active) return error("User not found or inactive", 404);
-
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
   if (!(await isValidRole(String(project.workspace), data.role))) return error("Unknown role", 422);
+
+  // Resolve the target user: by id (existing-user picker) or by email (invite).
+  const member = data.userId
+    ? await User.findById(data.userId)
+    : await User.findOne({ email: data.email!.toLowerCase() });
+
+  // Invite by email to someone without an account yet — record a pending invite.
+  if (!member && data.email) {
+    const email = data.email.toLowerCase();
+    const existing = await ProjectInvite.findOne({ project: id, email });
+    if (existing) {
+      existing.role = data.role;
+      existing.invitedBy = user!._id;
+      await existing.save();
+    } else {
+      await ProjectInvite.create({ project: id, workspace: project.workspace, email, role: data.role, invitedBy: user!._id });
+    }
+    await logActivity({
+      project: id,
+      workspace: String(project.workspace),
+      user: String(user!._id),
+      action: "project.member_invited",
+      detail: `Invited ${email} as ${roleLabel(data.role)} (pending registration)`,
+    });
+    const updated = await Project.findById(id).populate("members.user", "name email avatarColor designation active");
+    const pendingInvites = await ProjectInvite.find({ project: id }).select("email role createdAt").sort({ createdAt: 1 });
+    return json({ project: updated, pendingInvites, pending: true }, 201);
+  }
+
+  if (!member || !member.active) return error("User not found or inactive", 404);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  if (project.members.some((m: any) => String(m.user) === data.userId)) {
+  if (project.members.some((m: any) => String(m.user) === String(member._id))) {
     return error("User is already a project member", 409);
   }
 
-  project.members.push({ user: member._id, role: data.role });
-  await project.save();
+  await addUserToProject(project, String(member._id), data.role);
 
   await notify({
-    user: data.userId,
+    user: String(member._id),
     type: "invite",
     title: `You were added to project "${project.name}"`,
     link: `/p/${project._id}/board`,
@@ -59,7 +92,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   });
 
   const updated = await Project.findById(id).populate("members.user", "name email avatarColor designation active");
-  return json({ project: updated }, 201);
+  const pendingInvites = await ProjectInvite.find({ project: id }).select("email role createdAt").sort({ createdAt: 1 });
+  return json({ project: updated, pendingInvites }, 201);
 }
 
 const patchSchema = z.object({ userId: z.string(), role: z.string() });
@@ -101,7 +135,21 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const { id } = await params;
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");
-  if (!userId) return error("userId is required");
+  const email = searchParams.get("email");
+  if (!userId && !email) return error("userId or email is required");
+
+  // Revoke a pending (not-yet-registered) invitation by email.
+  if (email) {
+    if (!(await can(user, id, "member:manage"))) return error("You don't have permission to revoke invitations", 403);
+    await ProjectInvite.deleteOne({ project: id, email: email.toLowerCase() });
+    await logActivity({
+      project: id,
+      user: String(user!._id),
+      action: "project.invite_revoked",
+      detail: `Revoked the invitation for ${email.toLowerCase()}`,
+    });
+    return json({ ok: true });
+  }
 
   const removingSelf = userId === String(user!._id);
   if (!removingSelf && !(await can(user, id, "member:manage"))) {
