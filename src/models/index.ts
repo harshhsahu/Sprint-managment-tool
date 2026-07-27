@@ -14,7 +14,6 @@ const UserSchema = new Schema(
   },
   { timestamps: true }
 );
-
 /* ---------------------------- Workspace --------------------------- */
 const WorkspaceMemberSchema = new Schema(
   {
