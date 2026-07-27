@@ -45,6 +45,7 @@ const patchSchema = z.object({
     .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), color: z.string().max(20) }))
     .optional(),
   hiddenFields: z.array(z.string()).max(30).optional(),
+  requiredFields: z.array(z.string()).max(30).optional(),
   customFields: z
     .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), type: z.enum(["text", "number", "date"]) }))
     .max(20)

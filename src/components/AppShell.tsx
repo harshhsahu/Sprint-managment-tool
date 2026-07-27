@@ -13,6 +13,7 @@ import { fetcher, api } from "@/lib/client";
 import { Avatar, Modal } from "@/components/ui";
 import { KanboWordmark } from "@/components/brand";
 import { cn } from "@/lib/utils";
+import { ROLE_LABELS } from "@/lib/constants";
 
 /* ----------------------------- context ------------------------------ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -137,13 +138,29 @@ function GlobalSearch() {
 /* --------------------------- notifications -------------------------- */
 function NotificationsBell() {
   const [open, setOpen] = useState(false);
+  const [busyInvite, setBusyInvite] = useState<string | null>(null);
   const router = useRouter();
+  const { refresh } = useApp();
   const { data, mutate } = useSWR<Any>("/api/notifications", fetcher, { refreshInterval: 30000 });
-  const unread = data?.unreadCount || 0;
+  const { data: invData, mutate: mutInv } = useSWR<Any>("/api/invites", fetcher, { refreshInterval: 30000 });
+  const invites: Any[] = invData?.invites || [];
+  const unread = (data?.unreadCount || 0) + invites.length;
 
   async function markAll() {
     await api("/api/notifications", "PATCH", {});
     mutate();
+  }
+
+  async function respondInvite(id: string, action: "accept" | "reject") {
+    setBusyInvite(id);
+    try {
+      await api(`/api/invites/${id}`, "PATCH", { action });
+      mutInv();
+      mutate();
+      refresh(); // accepting grants project access — reload the sidebar's project list
+    } finally {
+      setBusyInvite(null);
+    }
   }
 
   return (
@@ -167,7 +184,42 @@ function NotificationsBell() {
               )}
             </div>
             <div className="max-h-96 overflow-y-auto">
-              {(data?.notifications || []).length === 0 && (
+              {invites.length > 0 && (
+                <div className="border-b border-line bg-accent/5">
+                  <div className="px-4 pt-2.5 text-xs font-semibold uppercase text-muted">Invitations</div>
+                  {invites.map((inv: Any) => (
+                    <div key={inv._id} className="px-4 py-3">
+                      <div className="flex gap-3">
+                        <Avatar user={inv.invitedBy} size={26} />
+                        <div className="min-w-0 text-sm">
+                          <span className="block">
+                            <span className="font-medium">{inv.invitedBy?.name || "Someone"}</span> invited you to{" "}
+                            <span className="font-medium">{inv.project?.name}</span>
+                          </span>
+                          <span className="block text-xs text-muted">Role: {ROLE_LABELS[inv.role] || inv.role}</span>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex gap-2 pl-9">
+                        <button
+                          className="btn-primary !py-1 text-xs"
+                          disabled={busyInvite === inv._id}
+                          onClick={() => respondInvite(inv._id, "accept")}
+                        >
+                          Accept
+                        </button>
+                        <button
+                          className="btn-ghost !py-1 text-xs"
+                          disabled={busyInvite === inv._id}
+                          onClick={() => respondInvite(inv._id, "reject")}
+                        >
+                          Decline
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {(data?.notifications || []).length === 0 && invites.length === 0 && (
                 <p className="py-8 text-center text-sm text-muted">You&apos;re all caught up 🎉</p>
               )}
               {(data?.notifications || []).map((n: Any) => (

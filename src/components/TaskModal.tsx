@@ -2,17 +2,31 @@
 
 import { useState } from "react";
 import useSWR from "swr";
-import Link from "next/link";
 import {
-  Copy, Trash2, Archive, Plus, Link2, CornerDownRight,
+  Copy, Trash2, Archive, Plus, Link2, CornerDownRight, CornerUpLeft, ArrowLeft,
 } from "lucide-react";
 import { fetcher, api } from "@/lib/client";
 import { Modal, Avatar, TypeIcon, Spinner } from "@/components/ui";
-import { PRIORITY_META, TYPE_META, TASK_TYPES, PRIORITIES } from "@/lib/constants";
+import { PRIORITY_META, TYPE_META, TASK_TYPES, PRIORITIES, REQUIRABLE_TASK_FIELDS } from "@/lib/constants";
 import { cn, formatDate, isOverdue } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
+
+/** Is a soft-required field still unfilled on this task? Used only to nudge — never to block. */
+function isFieldEmpty(task: Any, id: string): boolean {
+  switch (id) {
+    case "assignee": return !task.assignee;
+    case "description": return !(task.description && task.description.trim());
+    case "priority": return !task.priority;
+    case "dueDate": return !task.dueDate;
+    case "storyPoints": return task.storyPoints == null;
+    case "labels": return !(task.labels && task.labels.length);
+    case "epic": return !task.epic;
+    case "sprint": return !task.sprint;
+    default: return false;
+  }
+}
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -37,7 +51,21 @@ export default function TaskModal({
   onClose: () => void;
   onChanged?: () => void;
 }) {
-  const { data, mutate, isLoading } = useSWR<Any>(`/api/tasks/${taskId}`, fetcher);
+  // TaskModal can navigate between related tasks (open a subtask, jump to the
+  // parent) without unmounting. `currentId` is the task on screen; `navStack`
+  // remembers where we came from so the Back button can return.
+  const [currentId, setCurrentId] = useState(taskId);
+  const [navStack, setNavStack] = useState<string[]>([]);
+  // When the parent opens a different task, reset navigation (adjust state
+  // during render — the React-recommended alternative to a reset effect).
+  const [prevTaskId, setPrevTaskId] = useState(taskId);
+  if (taskId !== prevTaskId) {
+    setPrevTaskId(taskId);
+    setCurrentId(taskId);
+    setNavStack([]);
+  }
+
+  const { data, mutate, isLoading } = useSWR<Any>(`/api/tasks/${currentId}`, fetcher);
   const [comment, setComment] = useState("");
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [tab, setTab] = useState<"comments" | "activity">("comments");
@@ -58,6 +86,10 @@ export default function TaskModal({
   const hiddenFields: string[] = project?.hiddenFields || [];
   const showField = (id: string) => !hiddenFields.includes(id);
   const projectCustomFields: Any[] = project?.customFields || [];
+  const requiredFields: string[] = project?.requiredFields || [];
+  const missingRequired = task
+    ? REQUIRABLE_TASK_FIELDS.filter((f) => requiredFields.includes(f.id) && isFieldEmpty(task, f.id)).map((f) => f.label)
+    : [];
 
   async function createLabel(e: React.FormEvent) {
     e.preventDefault();
@@ -77,8 +109,26 @@ export default function TaskModal({
   const { data: sprintData } = useSWR<Any>(project?._id ? `/api/sprints?project=${project._id}` : null, fetcher);
   const { data: epicsData } = useSWR<Any>(project?._id ? `/api/tasks?project=${project._id}&type=epic&limit=50` : null, fetcher);
 
+  // Open a related task (subtask/parent) inside this same modal.
+  function navigate(id?: string) {
+    if (!id || id === currentId) return;
+    setNavStack((s) => [...s, currentId]);
+    setCurrentId(id);
+    setComment("");
+    setSubtaskTitle("");
+    setEditingDesc(false);
+  }
+  function goBack() {
+    setNavStack((s) => {
+      if (!s.length) return s;
+      setCurrentId(s[s.length - 1]);
+      return s.slice(0, -1);
+    });
+    setEditingDesc(false);
+  }
+
   async function patch(set: Any) {
-    await api(`/api/tasks/${taskId}`, "PATCH", set);
+    await api(`/api/tasks/${currentId}`, "PATCH", set);
     mutate();
     onChanged?.();
   }
@@ -88,7 +138,7 @@ export default function TaskModal({
     if (!comment.trim()) return;
     setBusy(true);
     try {
-      await api(`/api/tasks/${taskId}/comments`, "POST", { body: comment.trim() });
+      await api(`/api/tasks/${currentId}/comments`, "POST", { body: comment.trim() });
       setComment("");
       mutate();
     } finally {
@@ -103,7 +153,7 @@ export default function TaskModal({
       project: project._id,
       title: subtaskTitle.trim(),
       type: "subtask",
-      parentTask: taskId,
+      parentTask: currentId,
       sprint: task?.sprint?._id || null,
     });
     setSubtaskTitle("");
@@ -112,22 +162,29 @@ export default function TaskModal({
   }
 
   async function duplicate() {
-    await api(`/api/tasks/${taskId}/duplicate`, "POST");
+    await api(`/api/tasks/${currentId}/duplicate`, "POST");
     onChanged?.();
     onClose();
   }
 
   async function remove() {
     if (!confirm(`Delete ${task.key} permanently? Subtasks and comments will also be deleted.`)) return;
-    await api(`/api/tasks/${taskId}`, "DELETE");
+    await api(`/api/tasks/${currentId}`, "DELETE");
     onChanged?.();
-    onClose();
+    // If we drilled in from another task, return to it instead of closing.
+    if (navStack.length) goBack();
+    else onClose();
   }
 
   return (
     <Modal open onClose={onClose} wide title={
       task ? (
         <span className="flex items-center gap-2">
+          {navStack.length > 0 && (
+            <button onClick={goBack} className="btn-ghost !px-1.5 !py-1 -ml-1.5" title="Back">
+              <ArrowLeft size={14} />
+            </button>
+          )}
           <TypeIcon type={task.type} />
           <span className="font-mono text-xs text-muted">{task.key}</span>
           {task.epic && <span className="chip bg-purple-500/15 text-purple-500">{task.epic.key}</span>}
@@ -146,6 +203,28 @@ export default function TaskModal({
               disabled={!canEdit}
               onBlur={(e) => e.target.value !== task.title && e.target.value.trim() && patch({ title: e.target.value.trim() })}
             />
+
+            {/* parent task — click to open the parent from a subtask */}
+            {task.parentTask && (
+              <button
+                onClick={() => navigate(task.parentTask._id)}
+                className="mb-3 flex w-full items-center gap-2 rounded-lg border border-line px-2.5 py-1.5 text-left text-sm transition hover:border-accent"
+                title={`Open parent ${task.parentTask.key}`}
+              >
+                <CornerUpLeft size={13} className="text-muted" />
+                <span className="text-xs font-medium text-muted">Parent</span>
+                <TypeIcon type={task.parentTask.type} size={12} />
+                <span className="font-mono text-xs text-muted">{task.parentTask.key}</span>
+                <span className="truncate">{task.parentTask.title}</span>
+              </button>
+            )}
+
+            {/* soft-required nudge — informational only, never blocks saving */}
+            {missingRequired.length > 0 && (
+              <div className="mb-3 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                Please fill in: <b>{missingRequired.join(", ")}</b>. You can still save without them.
+              </div>
+            )}
 
             {/* description */}
             <div className="mb-4">
@@ -174,13 +253,19 @@ export default function TaskModal({
                 <div className="mb-1 text-xs font-semibold uppercase text-muted">Subtasks ({data.subtasks.length})</div>
                 <div className="space-y-1">
                   {data.subtasks.map((st: Any) => (
-                    <div key={st._id} className="flex items-center gap-2 rounded-lg border border-line px-2 py-1.5 text-sm">
-                      <CornerDownRight size={13} className="text-muted" />
-                      <span className="font-mono text-xs text-muted">{st.key}</span>
-                      <span className={cn("truncate", statuses.find((s: Any) => s.id === st.status)?.category === "done" && "line-through text-muted")}>
-                        {st.title}
-                      </span>
-                      <span className="ml-auto flex items-center gap-1.5">
+                    <div key={st._id} className="flex items-center gap-2 rounded-lg border border-line px-2 py-1.5 text-sm transition hover:border-accent">
+                      <button
+                        onClick={() => navigate(st._id)}
+                        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                        title={`Open ${st.key}`}
+                      >
+                        <CornerDownRight size={13} className="text-muted" />
+                        <span className="font-mono text-xs text-muted">{st.key}</span>
+                        <span className={cn("truncate", statuses.find((s: Any) => s.id === st.status)?.category === "done" && "line-through text-muted")}>
+                          {st.title}
+                        </span>
+                      </button>
+                      <span className="flex items-center gap-1.5">
                         <select
                           className="rounded border border-line bg-card px-1 py-0.5 text-xs"
                           value={st.status}
@@ -429,9 +514,9 @@ export default function TaskModal({
               </div>
             )}
             {task.parentTask && (
-              <div className="pt-2 text-xs text-muted px-2">
-                Parent: <Link href="#" className="text-accent">{task.parentTask.key}</Link>
-              </div>
+              <button onClick={() => navigate(task.parentTask._id)} className="pt-2 text-xs text-muted px-2 hover:text-accent">
+                Parent: <span className="text-accent">{task.parentTask.key}</span>
+              </button>
             )}
           </div>
         </div>

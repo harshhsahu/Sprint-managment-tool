@@ -3,13 +3,14 @@
 import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import useSWR from "swr";
-import { Plus, Trash2, GripVertical } from "lucide-react";
+import { Plus, Trash2, GripVertical, ArchiveRestore, Archive, Send, Mail } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { fetcher, api } from "@/lib/client";
-import { Spinner, Avatar } from "@/components/ui";
+import { Spinner, Avatar, TypeIcon, StatusBadge } from "@/components/ui";
+import TaskModal from "@/components/TaskModal";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
 import { useApp } from "@/components/AppShell";
-import { ASSIGNABLE_ROLES, ROLE_LABELS, STATUS_CATEGORIES, OPTIONAL_TASK_FIELDS, CUSTOM_FIELD_TYPES } from "@/lib/constants";
+import { ASSIGNABLE_ROLES, ROLE_LABELS, STATUS_CATEGORIES, OPTIONAL_TASK_FIELDS, REQUIRABLE_TASK_FIELDS, CUSTOM_FIELD_TYPES } from "@/lib/constants";
 
 export default function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
@@ -19,16 +20,31 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const [statuses, setStatuses] = useState<Any[]>([]);
   const [labels, setLabels] = useState<Any[]>([]);
   const [hiddenFields, setHiddenFields] = useState<string[]>([]);
+  const [requiredFields, setRequiredFields] = useState<string[]>([]);
   const [customFields, setCustomFields] = useState<Any[]>([]);
   const [info, setInfo] = useState({ name: "", description: "" });
-  const [addUserId, setAddUserId] = useState("");
-  const [addRole, setAddRole] = useState("editor");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState("editor");
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
-  const { data: usersData } = useSWR<Any>("/api/users", fetcher);
+  const { data: archivedData, mutate: mutArchived } = useSWR<Any>(`/api/tasks?project=${projectId}&archived=1&limit=200&sort=-updatedAt`, fetcher);
+  const [openTask, setOpenTask] = useState<string | null>(null);
   const isAdmin = myCapabilities.includes("project:manage");
   const canManageMembers = myCapabilities.includes("member:manage");
+  const canEditTasks = myCapabilities.includes("task:edit");
+  const archivedTasks: Any[] = archivedData?.tasks || [];
+
+  const { data: invitesData, mutate: mutInvites } = useSWR<Any>(
+    canManageMembers ? `/api/projects/${projectId}/invites` : null,
+    fetcher
+  );
+  const pendingInvites: Any[] = (invitesData?.invites || []).filter((i: Any) => i.status === "pending");
+
+  async function restoreTask(id: string) {
+    await api(`/api/tasks/${id}`, "PATCH", { archived: false });
+    mutArchived();
+  }
 
   useEffect(() => {
     if (project) {
@@ -36,6 +52,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       setStatuses(project.statuses.map((s: Any) => ({ ...s })));
       setLabels(project.labels.map((l: Any) => ({ ...l })));
       setHiddenFields([...(project.hiddenFields || [])]);
+      setRequiredFields([...(project.requiredFields || [])]);
       setCustomFields((project.customFields || []).map((f: Any) => ({ ...f })));
       setInfo({ name: project.name, description: project.description || "" });
     }
@@ -60,14 +77,22 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     setStatuses(next.map((s, i) => ({ ...s, order: i })));
   }
 
-  async function addMember() {
-    if (!addUserId) return;
-    setErr("");
+  async function sendInvite(e: React.FormEvent) {
+    e.preventDefault();
+    if (!inviteEmail.trim()) return;
+    setErr(""); setMsg("");
     try {
-      await api(`/api/projects/${projectId}/members`, "POST", { userId: addUserId, role: addRole });
-      setAddUserId("");
-      mutate();
+      await api(`/api/projects/${projectId}/invites`, "POST", { email: inviteEmail.trim(), role: inviteRole });
+      setInviteEmail("");
+      setMsg(`Invitation sent to ${inviteEmail.trim()}`);
+      setTimeout(() => setMsg(""), 2500);
+      mutInvites();
     } catch (e) { setErr((e as Error).message); }
+  }
+
+  async function revokeInvite(id: string) {
+    await api(`/api/projects/${projectId}/invites?inviteId=${id}`, "DELETE");
+    mutInvites();
   }
 
   async function deleteProject() {
@@ -86,10 +111,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     ...(wsOwner ? [{ user: wsOwner, role: "owner" }] : []),
     ...((project.workspace?.members || []) as Any[]).filter((m) => m.user?._id !== wsOwner?._id),
   ];
-  const wsUserIds = new Set(workspacePeople.map((m) => m.user?._id));
   const guests = (project.members || []) as Any[];
-  const guestIds = new Set(guests.map((m) => m.user?._id));
-  const candidates = (usersData?.users || []).filter((u: Any) => !wsUserIds.has(u._id) && !guestIds.has(u._id));
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-5 pb-16">
@@ -130,19 +152,43 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       {/* project guests */}
       <section className="card p-5">
         <h2 className="mb-1 font-semibold">Project guests</h2>
-        <p className="mb-3 text-xs text-muted">Give someone outside the workspace access to <b>this project only</b>.</p>
+        <p className="mb-3 text-xs text-muted">Invite anyone by email to access <b>this project only</b>. They don&apos;t need an account yet — the invitation waits for them and they choose to accept or decline when they sign in.</p>
         {canManageMembers && (
-          <div className="mb-4 flex flex-wrap gap-2">
-            <select className="input !w-64" value={addUserId} onChange={(e) => setAddUserId(e.target.value)}>
-              <option value="">Add a guest…</option>
-              {candidates.map((u: Any) => <option key={u._id} value={u._id}>{u.name} ({u.email})</option>)}
-            </select>
-            <select className="input !w-32" value={addRole} onChange={(e) => setAddRole(e.target.value)}>
+          <form onSubmit={sendInvite} className="mb-4 flex flex-wrap gap-2">
+            <input
+              className="input min-w-56 flex-1"
+              type="email"
+              placeholder="teammate@company.com"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+            />
+            <select className="input !w-32" value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
               {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
             </select>
-            <button className="btn-primary" onClick={addMember} disabled={!addUserId}><Plus size={14} /> Add</button>
+            <button className="btn-primary shrink-0" disabled={!inviteEmail.trim()}><Send size={14} /> Invite</button>
+          </form>
+        )}
+
+        {/* pending invitations */}
+        {canManageMembers && pendingInvites.length > 0 && (
+          <div className="mb-4">
+            <div className="mb-1.5 text-xs font-semibold uppercase text-muted">Pending invitations</div>
+            <div className="space-y-2">
+              {pendingInvites.map((inv: Any) => (
+                <div key={inv._id} className="flex items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2">
+                  <Mail size={16} className="text-muted" />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{inv.email}</div>
+                    <div className="truncate text-xs text-muted">Invited by {inv.invitedBy?.name || "someone"} · awaiting response</div>
+                  </div>
+                  <span className="ml-auto chip bg-amber-500/15 text-amber-600">{ROLE_LABELS[inv.role] || inv.role}</span>
+                  <button className="text-xs text-red-500 hover:underline" onClick={() => revokeInvite(inv._id)}>Revoke</button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
+
         <div className="space-y-2">
           {guests.map((m: Any) => (
             <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
@@ -269,6 +315,26 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
           </div>
         </div>
 
+        <div className="mb-4">
+          <div className="mb-1 text-xs font-semibold uppercase text-muted">Required on new tasks</div>
+          <p className="mb-2 text-xs text-muted">When any are checked, adding a task opens the full form so these can be filled in. Tasks still save even if left blank — they&apos;re never blocked or flagged.</p>
+          <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+            {REQUIRABLE_TASK_FIELDS.map((f) => (
+              <label key={f.id} className="flex cursor-pointer items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  disabled={!isAdmin}
+                  checked={requiredFields.includes(f.id)}
+                  onChange={(e) =>
+                    setRequiredFields(e.target.checked ? [...requiredFields, f.id] : requiredFields.filter((x) => x !== f.id))
+                  }
+                />
+                {f.label}
+              </label>
+            ))}
+          </div>
+        </div>
+
         <div>
           <div className="mb-2 text-xs font-semibold uppercase text-muted">Custom fields</div>
           <div className="space-y-2">
@@ -290,10 +356,40 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
               <button className="btn-ghost" onClick={() => setCustomFields([...customFields, { id: `cf_${Date.now().toString(36)}_${customFields.length}`, name: "New field", type: "text" }])}>
                 <Plus size={14} /> Add field
               </button>
-              <button className="btn-primary" onClick={() => save({ hiddenFields, customFields: customFields.filter((f) => f.name.trim()) }, "Task fields saved")}>Save fields</button>
+              <button className="btn-primary" onClick={() => save({ hiddenFields, requiredFields, customFields: customFields.filter((f) => f.name.trim()) }, "Task fields saved")}>Save fields</button>
             </div>
           )}
         </div>
+      </section>
+
+      {/* archived tasks */}
+      <section className="card p-5">
+        <h2 className="mb-1 flex items-center gap-2 font-semibold"><Archive size={16} /> Archived tasks</h2>
+        <p className="mb-3 text-xs text-muted">Tasks archived from the board or backlog. Restore one to bring it back to its status column.</p>
+        {!archivedData ? (
+          <Spinner label="Loading archived tasks…" />
+        ) : archivedTasks.length === 0 ? (
+          <p className="text-sm text-muted">No archived tasks.</p>
+        ) : (
+          <div className="space-y-1.5">
+            {archivedTasks.map((t: Any) => (
+              <div key={t._id} className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-sm transition hover:border-accent">
+                <button onClick={() => setOpenTask(t._id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title={`Open ${t.key}`}>
+                  <TypeIcon type={t.type} size={12} />
+                  <span className="font-mono text-xs text-muted">{t.key}</span>
+                  <span className="truncate">{t.title}</span>
+                  <StatusBadge status={t.status} statuses={project.statuses} />
+                </button>
+                <Avatar user={t.assignee} size={20} />
+                {canEditTasks && (
+                  <button className="btn-ghost !px-2 !py-1 text-xs" onClick={() => restoreTask(t._id)} title="Restore from archive">
+                    <ArchiveRestore size={13} /> Restore
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </section>
 
       {/* danger zone */}
@@ -307,6 +403,15 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
             <button className="btn-danger" onClick={deleteProject}><Trash2 size={14} /> Delete project</button>
           </div>
         </section>
+      )}
+
+      {openTask && (
+        <TaskModal
+          taskId={openTask}
+          project={project}
+          onClose={() => setOpenTask(null)}
+          onChanged={() => mutArchived()}
+        />
       )}
     </div>
   );

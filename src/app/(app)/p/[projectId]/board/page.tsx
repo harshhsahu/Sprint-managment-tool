@@ -14,7 +14,7 @@ import {
 } from "@/components/project/common";
 import { cn } from "@/lib/utils";
 
-function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: string; status: string; sprintId?: string | null; onCreated: () => void }) {
+function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: string; status: string; sprintId?: string | null; onCreated: (taskId?: string) => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [busy, setBusy] = useState(false);
@@ -27,9 +27,9 @@ function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: st
     if (!value || busy) return;
     setBusy(true);
     try {
-      await api("/api/tasks", "POST", { project: projectId, title: value, status, sprint: sprintId || null });
+      const res = await api<Any>("/api/tasks", "POST", { project: projectId, title: value, status, sprint: sprintId || null });
       setTitle("");
-      onCreated();
+      onCreated(res?.task?._id);
       ref.current?.focus(); // stay in "add mode" for the next task
     } finally {
       setBusy(false);
@@ -209,7 +209,7 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
                               projectId={projectId}
                               status={st.id}
                               sprintId={sprintScope === "active" ? activeSprint?._id : null}
-                              onCreated={() => mutate()}
+                              onCreated={(id) => { mutate(); if (id && project.requiredFields?.length) setOpenTask(id); }}
                             />
                           </div>
                         )}

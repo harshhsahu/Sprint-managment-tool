@@ -100,6 +100,20 @@ export const OPTIONAL_TASK_FIELDS = [
   { id: "watchers", label: "Watchers" },
 ] as const;
 
+/* Built-in fields that can be marked "required" (soft) on new tasks. When any are
+   set, creating a task via quick-add opens the full modal so they can be filled —
+   but the task is always saved even if left blank (never blocks, never errors). */
+export const REQUIRABLE_TASK_FIELDS = [
+  { id: "description", label: "Description" },
+  { id: "assignee", label: "Assignee" },
+  { id: "priority", label: "Priority" },
+  { id: "dueDate", label: "Due date" },
+  { id: "storyPoints", label: "Story points" },
+  { id: "labels", label: "Labels" },
+  { id: "epic", label: "Epic" },
+  { id: "sprint", label: "Sprint" },
+] as const;
+
 /* Custom fields a project can add to its tasks (e.g. "ETA"). */
 export const CUSTOM_FIELD_TYPES = ["text", "number", "date"] as const;
 export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];

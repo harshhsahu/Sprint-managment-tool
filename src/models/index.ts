@@ -90,6 +90,8 @@ const ProjectSchema = new Schema(
     labels: [LabelSchema],
     // Task-field configuration: hide built-in optional fields + define custom ones.
     hiddenFields: [{ type: String }],
+    // Fields that new tasks are prompted to fill (soft-required — never block saving).
+    requiredFields: [{ type: String }],
     customFields: [CustomFieldSchema],
     taskCounter: { type: Number, default: 0 },
     archived: { type: Boolean, default: false },
@@ -221,6 +223,23 @@ const SavedFilterSchema = new Schema(
   { timestamps: true }
 );
 
+/* ----------------------------- Invite ----------------------------- */
+// A pending invitation for someone to join a project as a guest. The invitee is
+// identified by email so people who don't have an account yet can be invited;
+// the invite surfaces (and can be accepted/rejected) once they sign in with that
+// email. Accepting adds them to project.members at `role`.
+const InviteSchema = new Schema(
+  {
+    project: { type: Types.ObjectId, ref: "Project", required: true, index: true },
+    email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    role: { type: String, enum: ["admin", "editor", "viewer"], default: "editor" },
+    status: { type: String, enum: ["pending", "accepted", "rejected"], default: "pending", index: true },
+    invitedBy: { type: Types.ObjectId, ref: "User", required: true },
+    respondedAt: { type: Date, default: null },
+  },
+  { timestamps: true }
+);
+
 /* ---------------------------- Dashboard --------------------------- */
 const DashboardSchema = new Schema(
   {
@@ -252,6 +271,7 @@ export const Comment = models.Comment || model("Comment", CommentSchema);
 export const Activity = models.Activity || model("Activity", ActivitySchema);
 export const Notification = models.Notification || model("Notification", NotificationSchema);
 export const SavedFilter = models.SavedFilter || model("SavedFilter", SavedFilterSchema);
+export const Invite = models.Invite || model("Invite", InviteSchema);
 export const Dashboard = models.Dashboard || model("Dashboard", DashboardSchema);
 
 export { mongoose };

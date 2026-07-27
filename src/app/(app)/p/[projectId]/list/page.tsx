@@ -50,9 +50,11 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
   async function quickAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    await api("/api/tasks", "POST", { project: projectId, title: newTitle.trim() });
+    const res = await api<Any>("/api/tasks", "POST", { project: projectId, title: newTitle.trim() });
     setNewTitle("");
     mutate();
+    // If the project marks fields as required, open the new task so they can be filled.
+    if (res?.task?._id && project?.requiredFields?.length) setOpenTask(res.task._id);
   }
 
   async function inlinePatch(taskId: string, set: Any) {
