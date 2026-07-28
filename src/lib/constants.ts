@@ -95,7 +95,6 @@ export const OPTIONAL_TASK_FIELDS = [
   { id: "epic", label: "Epic" },
   { id: "storyPoints", label: "Story points" },
   { id: "dueDate", label: "Due date" },
-  { id: "labels", label: "Labels" },
   { id: "dependencies", label: "Dependencies" },
   { id: "watchers", label: "Watchers" },
 ] as const;
@@ -109,13 +108,13 @@ export const REQUIRABLE_TASK_FIELDS = [
   { id: "priority", label: "Priority" },
   { id: "dueDate", label: "Due date" },
   { id: "storyPoints", label: "Story points" },
-  { id: "labels", label: "Labels" },
   { id: "epic", label: "Epic" },
   { id: "sprint", label: "Sprint" },
 ] as const;
 
-/* Custom fields a project can add to its tasks (e.g. "ETA"). */
-export const CUSTOM_FIELD_TYPES = ["text", "number", "date"] as const;
+/* Custom fields a project can add to its tasks (e.g. an "ETA" date or a
+   "Labels" multiselect). A "multiselect" field carries its own options. */
+export const CUSTOM_FIELD_TYPES = ["text", "number", "date", "multiselect"] as const;
 export type CustomFieldType = (typeof CUSTOM_FIELD_TYPES)[number];
 
 export const AVATAR_COLORS = [

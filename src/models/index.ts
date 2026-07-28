@@ -59,7 +59,9 @@ const StatusSchema = new Schema(
   { _id: false }
 );
 
-const LabelSchema = new Schema(
+// A selectable option for a "multiselect" custom field (carries its own colour,
+// so its chips render exactly like the old built-in labels did).
+const CustomFieldOptionSchema = new Schema(
   {
     id: { type: String, required: true },
     name: { type: String, required: true },
@@ -68,12 +70,14 @@ const LabelSchema = new Schema(
   { _id: false }
 );
 
-// A project-defined custom task field (e.g. "ETA").
+// A project-defined custom task field (e.g. an "ETA" date, or a "Labels" multiselect).
 const CustomFieldSchema = new Schema(
   {
     id: { type: String, required: true },
     name: { type: String, required: true },
-    type: { type: String, enum: ["text", "number", "date"], default: "text" },
+    type: { type: String, enum: ["text", "number", "date", "multiselect"], default: "text" },
+    // Only meaningful for type "multiselect" — the choosable options.
+    options: { type: [CustomFieldOptionSchema], default: undefined },
   },
   { _id: false }
 );
@@ -87,7 +91,6 @@ const ProjectSchema = new Schema(
     lead: { type: Types.ObjectId, ref: "User" },
     members: [ProjectMemberSchema],
     statuses: [StatusSchema],
-    labels: [LabelSchema],
     // Task-field configuration: hide built-in optional fields + define custom ones.
     hiddenFields: [{ type: String }],
     // Fields that new tasks are prompted to fill (soft-required — never block saving).
@@ -143,7 +146,6 @@ const TaskSchema = new Schema(
     epic: { type: Types.ObjectId, ref: "Task", default: null }, // parent epic
     parentTask: { type: Types.ObjectId, ref: "Task", default: null }, // for subtasks
     storyPoints: { type: Number, default: null },
-    labels: [{ type: String }], // label ids from project.labels
     dueDate: { type: Date, default: null },
     customFields: { type: Schema.Types.Mixed, default: {} }, // { [fieldId]: value } per project.customFields
     watchers: [{ type: Types.ObjectId, ref: "User" }],

@@ -27,11 +27,12 @@ export interface TaskFilters {
   assignee: string[];
   priority: string[];
   type: string[];
-  label: string[];
   status: string[];
+  // Per multiselect custom field: { [fieldId]: selectedOptionIds }
+  cf: Record<string, string[]>;
 }
 
-export const emptyFilters: TaskFilters = { q: "", assignee: [], priority: [], type: [], label: [], status: [] };
+export const emptyFilters: TaskFilters = { q: "", assignee: [], priority: [], type: [], status: [], cf: {} };
 
 export function filtersToQuery(f: TaskFilters): string {
   const p = new URLSearchParams();
@@ -39,8 +40,10 @@ export function filtersToQuery(f: TaskFilters): string {
   if (f.assignee.length) p.set("assignee", f.assignee.join(","));
   if (f.priority.length) p.set("priority", f.priority.join(","));
   if (f.type.length) p.set("type", f.type.join(","));
-  if (f.label.length) p.set("label", f.label.join(","));
   if (f.status.length) p.set("status", f.status.join(","));
+  for (const [fieldId, vals] of Object.entries(f.cf || {})) {
+    if (vals?.length) p.set(`cf_${fieldId}`, vals.join(","));
+  }
   const s = p.toString();
   return s ? `&${s}` : "";
 }
@@ -95,8 +98,10 @@ export function FilterBar({
   extra?: React.ReactNode;
 }) {
   const members = project?.members || [];
+  const multiselectFields = (project?.customFields || []).filter((f: Any) => f.type === "multiselect");
   const hasFilters =
-    filters.q || filters.assignee.length || filters.priority.length || filters.type.length || filters.label.length || filters.status.length;
+    filters.q || filters.assignee.length || filters.priority.length || filters.type.length || filters.status.length ||
+    Object.values(filters.cf || {}).some((v) => v.length);
   const { data: savedData, mutate: mutSaved } = useSWR<Any>(project?._id ? `/api/filters?project=${project._id}` : null, fetcher);
 
   async function saveCurrent() {
@@ -133,12 +138,15 @@ export function FilterBar({
         value={filters.type}
         onChange={(type) => setFilters({ ...filters, type })}
       />
-      <MultiSelect
-        label="Label"
-        options={(project?.labels || []).map((l: Any) => ({ value: l.id, label: l.name }))}
-        value={filters.label}
-        onChange={(label) => setFilters({ ...filters, label })}
-      />
+      {multiselectFields.map((f: Any) => (
+        <MultiSelect
+          key={f.id}
+          label={f.name}
+          options={(f.options || []).map((o: Any) => ({ value: o.id, label: o.name }))}
+          value={filters.cf?.[f.id] || []}
+          onChange={(vals) => setFilters({ ...filters, cf: { ...filters.cf, [f.id]: vals } })}
+        />
+      ))}
       {(savedData?.filters || []).length > 0 && (
         <select
           className="rounded-lg border border-line bg-card px-2 py-1.5 text-xs"

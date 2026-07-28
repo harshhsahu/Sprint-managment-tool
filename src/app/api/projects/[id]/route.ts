@@ -41,13 +41,20 @@ const patchSchema = z.object({
   description: z.string().max(2000).optional(),
   lead: z.string().optional(),
   statuses: z.array(statusSchema).min(1).optional(),
-  labels: z
-    .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), color: z.string().max(20) }))
-    .optional(),
   hiddenFields: z.array(z.string()).max(30).optional(),
   requiredFields: z.array(z.string()).max(30).optional(),
   customFields: z
-    .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), type: z.enum(["text", "number", "date"]) }))
+    .array(
+      z.object({
+        id: z.string().min(1),
+        name: z.string().min(1).max(40),
+        type: z.enum(["text", "number", "date", "multiselect"]),
+        options: z
+          .array(z.object({ id: z.string().min(1), name: z.string().min(1).max(40), color: z.string().max(20) }))
+          .max(100)
+          .optional(),
+      })
+    )
     .max(20)
     .optional(),
   archived: z.boolean().optional(),

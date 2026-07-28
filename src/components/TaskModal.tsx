@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import useSWR from "swr";
+import useSWR, { mutate as globalMutate } from "swr";
 import {
   Copy, Trash2, Archive, Plus, Link2, CornerDownRight, CornerUpLeft, ArrowLeft,
 } from "lucide-react";
@@ -21,7 +21,6 @@ function isFieldEmpty(task: Any, id: string): boolean {
     case "priority": return !task.priority;
     case "dueDate": return !task.dueDate;
     case "storyPoints": return task.storyPoints == null;
-    case "labels": return !(task.labels && task.labels.length);
     case "epic": return !task.epic;
     case "sprint": return !task.sprint;
     default: return false;
@@ -47,7 +46,7 @@ export default function TaskModal({
   onChanged,
 }: {
   taskId: string;
-  project: Any; // populated project with statuses/labels/members
+  project: Any; // populated project with statuses/customFields/members
   onClose: () => void;
   onChanged?: () => void;
 }) {
@@ -72,9 +71,18 @@ export default function TaskModal({
   const [editingDesc, setEditingDesc] = useState(false);
   const [desc, setDesc] = useState("");
   const [busy, setBusy] = useState(false);
-  const [labels, setLabels] = useState<Any[]>(project?.labels || []);
-  const [newLabel, setNewLabel] = useState("");
-  const [addingLabel, setAddingLabel] = useState(false);
+  // Local copy of the project's custom fields so options added inline show up
+  // immediately, without waiting for the parent project to refetch. Kept in sync
+  // with the project config below — otherwise a field/option added in Settings
+  // wouldn't appear here until a full page refresh.
+  const [customFieldsState, setCustomFieldsState] = useState<Any[]>(project?.customFields || []);
+  const [prevProjectCF, setPrevProjectCF] = useState(project?.customFields);
+  if (project?.customFields !== prevProjectCF) {
+    setPrevProjectCF(project?.customFields);
+    setCustomFieldsState(project?.customFields || []);
+  }
+  const [addingOptFor, setAddingOptFor] = useState<string | null>(null);
+  const [newOpt, setNewOpt] = useState("");
 
   const task = data?.task;
   const caps: string[] = data?.myCapabilities || [];
@@ -85,22 +93,25 @@ export default function TaskModal({
   const statuses: Any[] = project?.statuses || [];
   const hiddenFields: string[] = project?.hiddenFields || [];
   const showField = (id: string) => !hiddenFields.includes(id);
-  const projectCustomFields: Any[] = project?.customFields || [];
   const requiredFields: string[] = project?.requiredFields || [];
   const missingRequired = task
     ? REQUIRABLE_TASK_FIELDS.filter((f) => requiredFields.includes(f.id) && isFieldEmpty(task, f.id)).map((f) => f.label)
     : [];
 
-  async function createLabel(e: React.FormEvent) {
+  async function createOption(e: React.FormEvent, fieldId: string) {
     e.preventDefault();
-    const name = newLabel.trim();
+    const name = newOpt.trim();
     if (!name) return;
     try {
-      const res = await api<Any>(`/api/projects/${project._id}/labels`, "POST", { name });
-      setLabels(res.labels);
-      setNewLabel("");
-      setAddingLabel(false);
-      await patch({ labels: [...(task.labels || []), res.label.id] });
+      const res = await api<Any>(`/api/projects/${project._id}/field-options`, "POST", { fieldId, name });
+      setCustomFieldsState(res.customFields);
+      setNewOpt("");
+      setAddingOptFor(null);
+      const cur: string[] = task.customFields?.[fieldId] || [];
+      await patch({ customFields: { [fieldId]: [...cur, res.option.id] } });
+      // Refresh the shared project cache so the new option shows up everywhere
+      // (board/list filters, other open views) without a manual refresh.
+      globalMutate(`/api/projects/${project._id}`);
     } catch (err) {
       alert((err as Error).message);
     }
@@ -434,9 +445,50 @@ export default function TaskModal({
               />
             </Field>
             )}
-            {projectCustomFields.map((cf: Any) => {
-              const val = task.customFields?.[cf.id] ?? "";
+            {customFieldsState.map((cf: Any) => {
               const inputCls = "rounded-md border border-transparent bg-transparent px-2 py-1 text-sm hover:border-line focus:border-accent outline-none";
+              if (cf.type === "multiselect") {
+                const selected: string[] = task.customFields?.[cf.id] || [];
+                return (
+                  <Field key={cf.id} label={cf.name}>
+                    <div className="flex flex-wrap items-center gap-1 px-2">
+                      {(cf.options || []).map((o: Any) => {
+                        const active = selected.includes(o.id);
+                        return (
+                          <button
+                            key={o.id}
+                            disabled={!canEdit}
+                            className="chip cursor-pointer disabled:cursor-default"
+                            style={{ background: active ? `${o.color}30` : "transparent", color: active ? o.color : "var(--muted)", border: `1px solid ${active ? o.color : "var(--border)"}` }}
+                            onClick={() => patch({ customFields: { [cf.id]: active ? selected.filter((x) => x !== o.id) : [...selected, o.id] } })}
+                          >
+                            {o.name}
+                          </button>
+                        );
+                      })}
+                      {canEdit && addingOptFor !== cf.id && (
+                        <button className="chip cursor-pointer" style={{ border: "1px dashed var(--border)", color: "var(--muted)" }} onClick={() => { setAddingOptFor(cf.id); setNewOpt(""); }}>
+                          <Plus size={11} /> Option
+                        </button>
+                      )}
+                    </div>
+                    {canEdit && addingOptFor === cf.id && (
+                      <form onSubmit={(e) => createOption(e, cf.id)} className="mt-1.5 flex gap-1.5 px-2">
+                        <input
+                          className="input !py-1 text-xs"
+                          placeholder="New option name"
+                          value={newOpt}
+                          autoFocus
+                          onChange={(e) => setNewOpt(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") { setAddingOptFor(null); setNewOpt(""); } }}
+                        />
+                        <button className="btn-primary !px-2 !py-1 text-xs" disabled={!newOpt.trim()}>Add</button>
+                      </form>
+                    )}
+                  </Field>
+                );
+              }
+              const val = task.customFields?.[cf.id] ?? "";
               return (
                 <Field key={cf.id} label={cf.name}>
                   {cf.type === "date" ? (
@@ -450,44 +502,6 @@ export default function TaskModal({
                 </Field>
               );
             })}
-            {showField("labels") && (
-            <Field label="Labels">
-              <div className="flex flex-wrap items-center gap-1 px-2">
-                {labels.map((l: Any) => {
-                  const active = task.labels?.includes(l.id);
-                  return (
-                    <button
-                      key={l.id}
-                      disabled={!canEdit}
-                      className="chip cursor-pointer disabled:cursor-default"
-                      style={{ background: active ? `${l.color}30` : "transparent", color: active ? l.color : "var(--muted)", border: `1px solid ${active ? l.color : "var(--border)"}` }}
-                      onClick={() => patch({ labels: active ? task.labels.filter((x: string) => x !== l.id) : [...(task.labels || []), l.id] })}
-                    >
-                      {l.name}
-                    </button>
-                  );
-                })}
-                {canEdit && !addingLabel && (
-                  <button className="chip cursor-pointer" style={{ border: "1px dashed var(--border)", color: "var(--muted)" }} onClick={() => setAddingLabel(true)}>
-                    <Plus size={11} /> Label
-                  </button>
-                )}
-              </div>
-              {canEdit && addingLabel && (
-                <form onSubmit={createLabel} className="mt-1.5 flex gap-1.5 px-2">
-                  <input
-                    className="input !py-1 text-xs"
-                    placeholder="New label name"
-                    value={newLabel}
-                    autoFocus
-                    onChange={(e) => setNewLabel(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Escape") { setAddingLabel(false); setNewLabel(""); } }}
-                  />
-                  <button className="btn-primary !px-2 !py-1 text-xs" disabled={!newLabel.trim()}>Add</button>
-                </form>
-              )}
-            </Field>
-            )}
             {showField("watchers") && (
             <Field label="Watchers">
               <span className="flex items-center gap-1 px-2">

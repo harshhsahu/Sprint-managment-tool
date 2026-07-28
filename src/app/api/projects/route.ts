@@ -69,10 +69,18 @@ export async function POST(req: Request) {
     lead: user!._id,
     members: [],
     statuses: DEFAULT_STATUSES,
-    labels: [
-      { id: "frontend", name: "Frontend", color: "#3b82f6" },
-      { id: "backend", name: "Backend", color: "#8b5cf6" },
-      { id: "design", name: "Design", color: "#ec4899" },
+    // Starter "Labels" field — labels are now a user-defined multiselect custom field.
+    customFields: [
+      {
+        id: "labels",
+        name: "Labels",
+        type: "multiselect",
+        options: [
+          { id: "frontend", name: "Frontend", color: "#3b82f6" },
+          { id: "backend", name: "Backend", color: "#8b5cf6" },
+          { id: "design", name: "Design", color: "#ec4899" },
+        ],
+      },
     ],
   });
 

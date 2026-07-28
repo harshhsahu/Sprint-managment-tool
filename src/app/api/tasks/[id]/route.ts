@@ -44,7 +44,6 @@ const patchSchema = z.object({
   sprint: z.string().nullable().optional(),
   epic: z.string().nullable().optional(),
   storyPoints: z.number().min(0).max(100).nullable().optional(),
-  labels: z.array(z.string()).optional(),
   dueDate: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
   watchers: z.array(z.string()).optional(),
@@ -104,7 +103,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     }
   }
 
-  const simpleFields = ["title", "description", "type", "priority", "storyPoints", "labels", "watchers", "dependencies", "archived", "order"] as const;
+  const simpleFields = ["title", "description", "type", "priority", "storyPoints", "watchers", "dependencies", "archived", "order"] as const;
   for (const f of simpleFields) {
     if (data[f] !== undefined) {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any

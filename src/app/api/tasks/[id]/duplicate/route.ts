@@ -28,7 +28,7 @@ export async function POST(_req: Request, { params }: { params: Promise<{ id: st
     sprint: src.sprint,
     epic: src.epic,
     storyPoints: src.storyPoints,
-    labels: src.labels,
+    customFields: src.customFields,
     dueDate: src.dueDate,
     watchers: [user!._id],
     order: src.order + 1,

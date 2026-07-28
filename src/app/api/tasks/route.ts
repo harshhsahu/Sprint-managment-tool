@@ -6,7 +6,7 @@ import { TASK_TYPES, PRIORITIES } from "@/lib/constants";
 
 /** List tasks with rich filtering, sorting and pagination.
     ?project= &sprint=(id|none|active) &status= &priority= &assignee=(id|me|none) &reporter=
-    &type= &label= &epic= &q= &dueBefore= &dueAfter= &points= &archived=1
+    &type= &cf_<fieldId>= &epic= &q= &dueBefore= &dueAfter= &points= &archived=1
     &sort=order|-createdAt|dueDate|priority &page=1 &limit=50 */
 export async function GET(req: Request) {
   const { user, res } = await withAuth();
@@ -44,8 +44,14 @@ export async function GET(req: Request) {
   if (priority) filter.priority = { $in: priority };
   const type = csv(sp.get("type"));
   if (type) filter.type = { $in: type };
-  const label = csv(sp.get("label"));
-  if (label) filter.labels = { $in: label };
+
+  // Custom multiselect-field filters arrive as `cf_<fieldId>=optId1,optId2`.
+  // A task matches when its stored value array contains any of the selected options.
+  for (const [key, raw] of sp.entries()) {
+    if (!key.startsWith("cf_")) continue;
+    const vals = csv(raw);
+    if (vals) filter[`customFields.${key.slice(3)}`] = { $in: vals };
+  }
 
   const assignee = sp.get("assignee");
   if (assignee === "me") filter.assignee = user!._id;
@@ -115,7 +121,6 @@ const createSchema = z.object({
   epic: z.string().nullable().optional(),
   parentTask: z.string().nullable().optional(),
   storyPoints: z.number().min(0).max(100).nullable().optional(),
-  labels: z.array(z.string()).optional(),
   dueDate: z.string().nullable().optional(),
   customFields: z.record(z.string(), z.unknown()).optional(),
 });
@@ -154,7 +159,6 @@ export async function POST(req: Request) {
     epic: data.epic || null,
     parentTask: data.parentTask || null,
     storyPoints: data.storyPoints ?? null,
-    labels: data.labels || [],
     dueDate: data.dueDate ? new Date(data.dueDate) : null,
     customFields: data.customFields || {},
     watchers: [user!._id],

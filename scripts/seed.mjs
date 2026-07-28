@@ -70,11 +70,19 @@ async function main() {
     // holds only project guests (users outside the workspace).
     members: [],
     statuses: STATUSES,
-    labels: [
-      { id: "frontend", name: "Frontend", color: "#3b82f6" },
-      { id: "backend", name: "Backend", color: "#8b5cf6" },
-      { id: "design", name: "Design", color: "#ec4899" },
-      { id: "infra", name: "Infra", color: "#f59e0b" },
+    // Labels are a user-defined "multiselect" custom field (no longer built-in).
+    customFields: [
+      {
+        id: "labels",
+        name: "Labels",
+        type: "multiselect",
+        options: [
+          { id: "frontend", name: "Frontend", color: "#3b82f6" },
+          { id: "backend", name: "Backend", color: "#8b5cf6" },
+          { id: "design", name: "Design", color: "#ec4899" },
+          { id: "infra", name: "Infra", color: "#f59e0b" },
+        ],
+      },
     ],
     taskCounter: 0,
     archived: false,
@@ -103,7 +111,8 @@ async function main() {
       priority: opts.priority || "medium",
       assignee: opts.assignee || null, reporter: opts.reporter || alice._id,
       sprint: opts.sprint || null, epic: opts.epic || null, parentTask: opts.parentTask || null,
-      storyPoints: opts.points ?? null, labels: opts.labels || [],
+      storyPoints: opts.points ?? null,
+      customFields: opts.labels ? { labels: opts.labels } : {},
       dueDate: opts.due || null, watchers: [opts.reporter || alice._id, ...(opts.assignee ? [opts.assignee] : [])],
       dependencies: opts.deps || [], order: counter * 1000, archived: false,
       completedAt: opts.completedAt || null, startedAt: opts.startedAt || null,

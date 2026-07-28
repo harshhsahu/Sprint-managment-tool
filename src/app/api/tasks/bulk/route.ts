@@ -11,7 +11,6 @@ const schema = z.object({
     priority: z.enum(PRIORITIES).optional(),
     assignee: z.string().nullable().optional(),
     sprint: z.string().nullable().optional(),
-    labels: z.array(z.string()).optional(),
     storyPoints: z.number().min(0).max(100).nullable().optional(),
     archived: z.boolean().optional(),
     dueDate: z.string().nullable().optional(),

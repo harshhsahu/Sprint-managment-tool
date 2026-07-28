@@ -12,13 +12,23 @@ import { useProject, ProjectHeader, type Any } from "@/components/project/common
 import { useApp } from "@/components/AppShell";
 import { ASSIGNABLE_ROLES, ROLE_LABELS, STATUS_CATEGORIES, OPTIONAL_TASK_FIELDS, REQUIRABLE_TASK_FIELDS, CUSTOM_FIELD_TYPES } from "@/lib/constants";
 
+/** Drop unnamed fields; keep options only for multiselect fields (with named options). */
+function normalizeCustomFields(fields: Any[]): Any[] {
+  return fields
+    .filter((f) => f.name.trim())
+    .map((f) =>
+      f.type === "multiselect"
+        ? { id: f.id, name: f.name.trim(), type: "multiselect", options: (f.options || []).filter((o: Any) => o.name.trim()) }
+        : { id: f.id, name: f.name.trim(), type: f.type }
+    );
+}
+
 export default function ProjectSettingsPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
   const router = useRouter();
   const { project, myRole, myCapabilities, mutate } = useProject(projectId);
   const { refresh } = useApp();
   const [statuses, setStatuses] = useState<Any[]>([]);
-  const [labels, setLabels] = useState<Any[]>([]);
   const [hiddenFields, setHiddenFields] = useState<string[]>([]);
   const [requiredFields, setRequiredFields] = useState<string[]>([]);
   const [customFields, setCustomFields] = useState<Any[]>([]);
@@ -50,7 +60,6 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     if (project) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatuses(project.statuses.map((s: Any) => ({ ...s })));
-      setLabels(project.labels.map((l: Any) => ({ ...l })));
       setHiddenFields([...(project.hiddenFields || [])]);
       setRequiredFields([...(project.requiredFields || [])]);
       setCustomFields((project.customFields || []).map((f: Any) => ({ ...f })));
@@ -267,30 +276,6 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
         )}
       </section>
 
-      {/* labels */}
-      <section className="card p-5">
-        <h2 className="mb-3 font-semibold">Labels</h2>
-        <div className="space-y-2">
-          {labels.map((l, i) => (
-            <div key={l.id} className="flex items-center gap-2">
-              <input type="color" className="h-7 w-8 cursor-pointer rounded border border-line bg-transparent" disabled={!isAdmin} value={l.color}
-                onChange={(e) => setLabels(labels.map((x, xi) => (xi === i ? { ...x, color: e.target.value } : x)))} />
-              <input className="input !w-52 !py-1 text-sm" disabled={!isAdmin} value={l.name}
-                onChange={(e) => setLabels(labels.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))} />
-              {isAdmin && <button className="text-red-500" onClick={() => setLabels(labels.filter((_, xi) => xi !== i))}><Trash2 size={14} /></button>}
-            </div>
-          ))}
-        </div>
-        {isAdmin && (
-          <div className="mt-3 flex gap-2">
-            <button className="btn-ghost" onClick={() => setLabels([...labels, { id: `lb_${labels.length}_${labels.map(l=>l.id).join("").length}`, name: "new-label", color: "#3b82f6" }])}>
-              <Plus size={14} /> Add label
-            </button>
-            <button className="btn-primary" onClick={() => save({ labels }, "Labels saved")}>Save labels</button>
-          </div>
-        )}
-      </section>
-
       {/* task fields */}
       <section className="card p-5">
         <h2 className="mb-1 font-semibold">Task fields</h2>
@@ -336,19 +321,44 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
         </div>
 
         <div>
-          <div className="mb-2 text-xs font-semibold uppercase text-muted">Custom fields</div>
+          <div className="mb-1 text-xs font-semibold uppercase text-muted">Custom fields</div>
+          <p className="mb-2 text-xs text-muted">Add your own fields. A <b>multiselect</b> field carries its own colored options — use it for things like labels, components or teams.</p>
           <div className="space-y-2">
-            {customFields.map((f, i) => (
-              <div key={f.id} className="flex items-center gap-2">
-                <input className="input !w-52 !py-1 text-sm" disabled={!isAdmin} placeholder="Field name (e.g. ETA)" value={f.name}
-                  onChange={(e) => setCustomFields(customFields.map((x, xi) => (xi === i ? { ...x, name: e.target.value } : x)))} />
-                <select className="input !w-32 !py-1 text-xs" disabled={!isAdmin} value={f.type}
-                  onChange={(e) => setCustomFields(customFields.map((x, xi) => (xi === i ? { ...x, type: e.target.value } : x)))}>
-                  {CUSTOM_FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-                {isAdmin && <button className="text-red-500" onClick={() => setCustomFields(customFields.filter((_, xi) => xi !== i))}><Trash2 size={14} /></button>}
-              </div>
-            ))}
+            {customFields.map((f, i) => {
+              const setField = (patch: Any) => setCustomFields(customFields.map((x, xi) => (xi === i ? { ...x, ...patch } : x)));
+              return (
+                <div key={f.id} className="rounded-lg border border-line p-2">
+                  <div className="flex items-center gap-2">
+                    <input className="input !w-52 !py-1 text-sm" disabled={!isAdmin} placeholder="Field name (e.g. ETA)" value={f.name}
+                      onChange={(e) => setField({ name: e.target.value })} />
+                    <select className="input !w-32 !py-1 text-xs" disabled={!isAdmin} value={f.type}
+                      onChange={(e) => setField(e.target.value === "multiselect" ? { type: "multiselect", options: f.options || [] } : { type: e.target.value })}>
+                      {CUSTOM_FIELD_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                    {isAdmin && <button className="text-red-500" onClick={() => setCustomFields(customFields.filter((_, xi) => xi !== i))}><Trash2 size={14} /></button>}
+                  </div>
+                  {f.type === "multiselect" && (
+                    <div className="mt-2 space-y-1.5 border-t border-line pt-2 pl-1">
+                      <div className="text-xs text-muted">Options</div>
+                      {(f.options || []).map((o: Any, oi: number) => (
+                        <div key={o.id} className="flex items-center gap-2">
+                          <input type="color" className="h-6 w-7 cursor-pointer rounded border border-line bg-transparent" disabled={!isAdmin} value={o.color}
+                            onChange={(e) => setField({ options: f.options.map((x: Any, xi: number) => (xi === oi ? { ...x, color: e.target.value } : x)) })} />
+                          <input className="input !w-48 !py-1 text-sm" disabled={!isAdmin} placeholder="Option name" value={o.name}
+                            onChange={(e) => setField({ options: f.options.map((x: Any, xi: number) => (xi === oi ? { ...x, name: e.target.value } : x)) })} />
+                          {isAdmin && <button className="text-red-500" onClick={() => setField({ options: f.options.filter((_: Any, xi: number) => xi !== oi) })}><Trash2 size={13} /></button>}
+                        </div>
+                      ))}
+                      {isAdmin && (
+                        <button className="btn-ghost !py-1 text-xs" onClick={() => setField({ options: [...(f.options || []), { id: `opt_${Date.now().toString(36)}_${(f.options || []).length}`, name: "New option", color: "#3b82f6" }] })}>
+                          <Plus size={12} /> Add option
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
             {customFields.length === 0 && <p className="text-sm text-muted">No custom fields.</p>}
           </div>
           {isAdmin && (
@@ -356,7 +366,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
               <button className="btn-ghost" onClick={() => setCustomFields([...customFields, { id: `cf_${Date.now().toString(36)}_${customFields.length}`, name: "New field", type: "text" }])}>
                 <Plus size={14} /> Add field
               </button>
-              <button className="btn-primary" onClick={() => save({ hiddenFields, requiredFields, customFields: customFields.filter((f) => f.name.trim()) }, "Task fields saved")}>Save fields</button>
+              <button className="btn-primary" onClick={() => save({ hiddenFields, requiredFields, customFields: normalizeCustomFields(customFields) }, "Task fields saved")}>Save fields</button>
             </div>
           )}
         </div>
