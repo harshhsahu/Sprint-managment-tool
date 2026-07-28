@@ -9,6 +9,7 @@ import {
 } from "@/store/hooks";
 import { errMsg } from "@/store/api";
 import { Modal, Avatar, Spinner, EmptyState } from "@/components/ui";
+import { PlanBadge } from "@/components/PlanBadge";
 import { useApp } from "@/components/AppShell";
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from "@/lib/constants";
 
@@ -108,8 +109,11 @@ export default function WorkspacesPage() {
             <div key={ws._id} className="card p-5">
               <div className="mb-3 flex items-start justify-between gap-2">
                 <div>
-                  <h2 className="font-semibold">{ws.name}</h2>
-                  {ws.description && <p className="text-sm text-muted">{ws.description}</p>}
+                  <span className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-semibold">{ws.name}</h2>
+                    <PlanBadge ws={ws} />
+                  </span>
+                  {ws.description && <p className="mt-0.5 text-sm text-muted">{ws.description}</p>}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span className="flex -space-x-1.5">

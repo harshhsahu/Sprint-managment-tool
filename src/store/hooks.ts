@@ -63,6 +63,8 @@ export const useQ = {
   useSprints: (url: string | null | undefined) =>
     useSwrLike(api.useGetSprintsQuery(url ?? skipToken)),
   useWorkspaces: () => useSwrLike(api.useGetWorkspacesQuery()),
+  useWorkspacesList: (url: string | null | undefined) =>
+    useSwrLike(api.useGetWorkspacesListQuery(url ?? skipToken)),
   useUsers: (url: string | null | undefined) =>
     useSwrLike(api.useGetUsersQuery(url ?? skipToken)),
   useMe: () => useSwrLike(api.useGetMeQuery()),
@@ -99,6 +101,7 @@ export const {
   useDeleteSprintMutation,
   useCreateWorkspaceMutation,
   useDeleteWorkspaceMutation,
+  useSetWorkspacePlanMutation,
   useInviteWorkspaceMemberMutation,
   useUpdateWorkspaceMemberMutation,
   useRemoveWorkspaceMemberMutation,

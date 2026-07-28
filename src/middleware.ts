@@ -7,7 +7,9 @@ const PUBLIC_PATHS = ["/login", "/register", "/forgot-password"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  // The marketing landing page ("/") is public — exact match, since a startsWith
+  // check on "/" would make every route public.
+  const isPublic = pathname === "/" || PUBLIC_PATHS.some((p) => pathname.startsWith(p));
   const token = req.cookies.get("sm_session")?.value;
 
   let authed = false;
@@ -35,7 +37,10 @@ export async function middleware(req: NextRequest) {
     url.search = "";
     return NextResponse.redirect(url);
   }
-  if (authed && isPublic) {
+  // Logged-in users hitting an auth page (login/register/…) are sent to the app,
+  // but the landing page ("/") stays viewable while authed — it shows a
+  // "Go to app" CTA instead of sign-in.
+  if (authed && isPublic && pathname !== "/") {
     const url = req.nextUrl.clone();
     url.pathname = "/dashboard";
     url.search = "";

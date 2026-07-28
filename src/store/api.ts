@@ -79,6 +79,8 @@ export const api = createApi({
     }),
     getSprints: b.query<Any, string>({ query: (url) => url, providesTags: ["Sprints"] }),
     getWorkspaces: b.query<Any, void>({ query: () => "/api/workspaces", providesTags: ["Workspaces"] }),
+    // Keyed by full URL — used by the super-admin plan dashboard ("/api/workspaces?all=1").
+    getWorkspacesList: b.query<Any, string>({ query: (url) => url, providesTags: ["Workspaces"] }),
     getUsers: b.query<Any, string>({ query: (url) => url, providesTags: ["Users"] }),
     getMe: b.query<Any, void>({ query: () => "/api/auth/me", providesTags: ["Me"] }),
     getNotifications: b.query<Any, void>({ query: () => "/api/notifications", providesTags: ["Notifications"] }),
@@ -174,6 +176,27 @@ export const api = createApi({
     deleteWorkspace: b.mutation<Any, string>({
       query: (id) => write(`/api/workspaces/${id}`, "DELETE"),
       invalidatesTags: ["Workspaces", "Projects"],
+    }),
+    // Super-admin only (server enforces). Assign/change a workspace's billing plan.
+    // Optimistic: the admin table's controlled <select>s are bound to server data,
+    // so without patching the cache immediately they'd snap back to the old value
+    // until the refetch lands (reads as "the dropdown didn't do anything").
+    setWorkspacePlan: b.mutation<Any, { id: string; set: Any; listUrl?: string }>({
+      query: ({ id, set }) => write(`/api/workspaces/${id}`, "PATCH", set),
+      async onQueryStarted({ id, set, listUrl = "/api/workspaces?all=1" }, { dispatch, queryFulfilled }) {
+        const patch = dispatch(
+          api.util.updateQueryData("getWorkspacesList", listUrl, (draft: Any) => {
+            const ws = draft?.workspaces?.find((w: Any) => String(w._id) === String(id));
+            if (ws) Object.assign(ws, set);
+          })
+        );
+        try {
+          await queryFulfilled;
+        } catch {
+          patch.undo();
+        }
+      },
+      invalidatesTags: ["Workspaces"],
     }),
     inviteWorkspaceMember: b.mutation<Any, { id: string; body: Any }>({
       query: ({ id, body }) => write(`/api/workspaces/${id}/members`, "POST", body),

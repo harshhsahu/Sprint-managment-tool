@@ -15,6 +15,7 @@ import { api } from "@/store/api";
 import { signOut } from "firebase/auth";
 import { auth } from "@/lib/firebase/client";
 import { Avatar, Modal, Button } from "@/components/ui";
+import { PlanBadge } from "@/components/PlanBadge";
 import { KanboWordmark } from "@/components/brand";
 import { cn } from "@/lib/utils";
 import { ROLE_LABELS, isSuperAdminEmail } from "@/lib/constants";
@@ -352,11 +353,18 @@ function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
 
 /* ------------------------------ topbar ------------------------------ */
 function Topbar({ sidebarOpen, onOpenSidebar }: { sidebarOpen: boolean; onOpenSidebar: () => void }) {
-  const { me } = useApp();
+  const { me, projects, workspaces } = useApp();
   const router = useRouter();
+  const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutM] = useLogoutMutation();
   const dispatch = useAppDispatch();
+
+  // While viewing a project, surface that project's workspace plan + trial timer.
+  const activeProjectId = pathname.match(/^\/p\/([a-f0-9]{24})/)?.[1];
+  const activeProject = projects.find((p: Any) => p._id === activeProjectId);
+  const activeWsId = activeProject && String(activeProject.workspace?._id || activeProject.workspace);
+  const activeWs = activeWsId ? workspaces.find((w: Any) => w._id === activeWsId) : null;
 
   async function logout() {
     await signOut(auth).catch(() => {});
@@ -379,6 +387,7 @@ function Topbar({ sidebarOpen, onOpenSidebar }: { sidebarOpen: boolean; onOpenSi
         <ChevronLeft size={18} />
       </button>
       <GlobalSearch />
+      {activeWs && <PlanBadge ws={activeWs} className="ml-2 hidden md:inline-flex" />}
       <div className="ml-auto flex items-center gap-2">
         <NotificationsBell />
         <div className="relative">

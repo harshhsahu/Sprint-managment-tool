@@ -21,23 +21,42 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 const patchSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   description: z.string().max(500).optional(),
+  // Plan fields — super-admin only (enforced below). Assigned from the admin panel.
+  plan: z.enum(["trial", "pro", "business", "enterprise"]).optional(),
+  subscriptionStatus: z.enum(["trialing", "active", "expired"]).optional(),
+  planExpiresAt: z.string().datetime().nullable().optional(),
 });
+
+const PLAN_FIELDS = ["plan", "subscriptionStatus", "planExpiresAt"] as const;
 
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
   if (res) return res;
   const { id } = await params;
 
-  const role = await getWorkspaceRole(user, id);
-  if (!isWorkspaceManager(role)) return error("Only workspace owners and admins can edit the workspace", 403);
-
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
+
+  const touchesPlan = PLAN_FIELDS.some((f) => f in data);
+  const superAdmin = isSuperAdmin(user);
+
+  // Plan fields can only be changed by the super admin (billing is centrally
+  // controlled). Workspace owners/admins may edit name/description as before.
+  if (touchesPlan && !superAdmin) {
+    return error("Only the super admin can change a workspace's plan", 403);
+  }
+  if (!touchesPlan) {
+    const role = await getWorkspaceRole(user, id);
+    if (!isWorkspaceManager(role)) return error("Only workspace owners and admins can edit the workspace", 403);
+  }
 
   const workspace = await Workspace.findByIdAndUpdate(id, { $set: data }, { new: true });
   if (!workspace) return error("Workspace not found", 404);
 
-  await logActivity({ workspace: id, user: String(user!._id), action: "workspace.updated", detail: `Updated workspace settings` });
+  const detail = touchesPlan && data.plan
+    ? `Set plan to ${data.plan}${data.subscriptionStatus ? ` (${data.subscriptionStatus})` : ""}`
+    : "Updated workspace settings";
+  await logActivity({ workspace: id, user: String(user!._id), action: touchesPlan ? "workspace.plan_changed" : "workspace.updated", detail });
   return json({ workspace });
 }
 

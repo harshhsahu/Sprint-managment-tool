@@ -35,6 +35,15 @@ const WorkspaceSchema = new Schema(
     description: { type: String, default: "" },
     owner: { type: Types.ObjectId, ref: "User", required: true },
     members: [WorkspaceMemberSchema],
+    // ---- Billing / subscription (see src/lib/plans.ts) ----
+    // Assigned by the super admin from the admin panel; no payment gateway yet.
+    // New workspaces start on the Pro plan in a 15-day trial (status "trialing").
+    plan: { type: String, enum: ["trial", "pro", "business", "enterprise"], default: "pro" },
+    subscriptionStatus: { type: String, enum: ["trialing", "active", "expired"], default: "trialing" },
+    // 15-day trial (TRIAL_DAYS). Set on creation; when it lapses the workspace goes read-only.
+    trialEndsAt: { type: Date, default: () => new Date(Date.now() + 15 * 24 * 60 * 60 * 1000) },
+    // When a paid plan lapses. null = no expiry (does not lapse).
+    planExpiresAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

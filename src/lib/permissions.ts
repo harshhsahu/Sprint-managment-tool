@@ -1,5 +1,11 @@
 import { Project, Workspace } from "@/models";
 import { ROLE_CAPS, isSuperAdminEmail, type Capability, type Role } from "./constants";
+import { resolveStatus } from "./plans";
+
+/** The only capability an expired-plan workspace keeps: read. Everything else is
+    stripped, putting the whole workspace into automatic read-only mode.
+    (Billing gate — see getCapabilities.) */
+const READ_ONLY_CAPS: Capability[] = ["project:view"];
 
 /* Role-based access control.
 
@@ -57,10 +63,27 @@ export async function getProjectRole(user: UserDoc, projectId: string): Promise<
   return wsRole || guestRole;
 }
 
-/** All capabilities a user has on a project. */
+/** True when the workspace's plan/trial has lapsed (see resolveStatus). Such a
+    workspace is forced read-only for everyone until a plan is (re)assigned. */
+export async function isWorkspaceExpired(workspaceId: string): Promise<boolean> {
+  const ws = await Workspace.findById(workspaceId).select(
+    "plan subscriptionStatus trialEndsAt planExpiresAt"
+  );
+  if (!ws) return false;
+  return resolveStatus(ws) === "expired";
+}
+
+/** All capabilities a user has on a project. When the owning workspace's plan has
+    expired, capabilities collapse to read-only regardless of the user's role. */
 export async function getCapabilities(user: UserDoc, projectId: string): Promise<Set<Capability>> {
   const role = await getProjectRole(user, projectId);
-  return new Set(role ? ROLE_CAPS[role] : []);
+  if (!role) return new Set();
+
+  const project = await Project.findById(projectId).select("workspace");
+  if (project && (await isWorkspaceExpired(String(project.workspace)))) {
+    return new Set(ROLE_CAPS[role].filter((c) => READ_ONLY_CAPS.includes(c)));
+  }
+  return new Set(ROLE_CAPS[role]);
 }
 
 /** Does the user have a specific capability on a project? */
