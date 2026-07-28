@@ -116,11 +116,22 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   // Everyone in the workspace already has access to this project (read-only here —
   // managed at the workspace level). Project "guests" are users outside the workspace.
   const wsOwner = project.workspace?.owner;
+  const excludedPeople = (project.excludedMembers || []) as Any[];
+  const excludedIds = new Set(excludedPeople.map((u: Any) => String(u?._id ?? u)));
   const workspacePeople: Any[] = [
     ...(wsOwner ? [{ user: wsOwner, role: "owner" }] : []),
     ...((project.workspace?.members || []) as Any[]).filter((m) => m.user?._id !== wsOwner?._id),
-  ];
+  ].filter((m) => !excludedIds.has(String(m.user?._id)));
   const guests = (project.members || []) as Any[];
+
+  const excludeMember = async (userId: string) => {
+    await api(`/api/projects/${projectId}/members?userId=${userId}`, "DELETE");
+    mutate();
+  };
+  const restoreMember = async (userId: string) => {
+    await api(`/api/projects/${projectId}/members`, "POST", { userId });
+    mutate();
+  };
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-5 pb-16">
@@ -142,7 +153,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
       {/* team via workspace (read-only) */}
       <section className="card p-5">
         <h2 className="mb-1 font-semibold">Team access</h2>
-        <p className="mb-3 text-xs text-muted">Everyone in the <b>{project.workspace?.name}</b> workspace has access to this project at their workspace role. Manage them from <span className="font-medium">Workspaces → Members</span>.</p>
+        <p className="mb-3 text-xs text-muted">Everyone in the <b>{project.workspace?.name}</b> workspace has access to this project at their workspace role. Roles are managed from <span className="font-medium">Workspaces → Members</span>; here you can remove someone from <b>this project only</b>.</p>
         <div className="space-y-2">
           {workspacePeople.map((m: Any) => (
             <div key={m.user?._id} className="flex items-center gap-2.5 rounded-lg border border-line px-3 py-2">
@@ -152,10 +163,38 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
                 <div className="truncate text-xs text-muted">{m.user?.designation || m.user?.email}</div>
               </div>
               <span className="ml-auto chip bg-accent/15 text-accent">{ROLE_LABELS[m.role] || m.role}</span>
+              {canManageMembers && m.role !== "owner" && (
+                <button className="text-xs text-red-500 hover:underline" onClick={() => excludeMember(m.user._id)}>
+                  Remove
+                </button>
+              )}
             </div>
           ))}
           {workspacePeople.length === 0 && <p className="text-sm text-muted">No workspace members.</p>}
         </div>
+
+        {excludedPeople.length > 0 && (
+          <div className="mt-4">
+            <div className="mb-1.5 text-xs font-semibold uppercase text-muted">Removed from this project</div>
+            <p className="mb-2 text-xs text-muted">These workspace members have been removed from this project. They keep their access to every other project.</p>
+            <div className="space-y-2">
+              {excludedPeople.map((u: Any) => (
+                <div key={u?._id} className="flex items-center gap-2.5 rounded-lg border border-dashed border-line px-3 py-2 opacity-70">
+                  <Avatar user={u} size={26} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{u?.name}</div>
+                    <div className="truncate text-xs text-muted">{u?.designation || u?.email}</div>
+                  </div>
+                  {canManageMembers && (
+                    <button className="ml-auto text-xs text-accent hover:underline" onClick={() => restoreMember(u._id)}>
+                      Restore access
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </section>
 
       {/* project guests */}

@@ -33,6 +33,25 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
   if (await isWorkspaceMember(String(project.workspace), data.userId)) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const wasExcluded = (project.excludedMembers || []).some((x: any) => String(x) === data.userId);
+    if (wasExcluded) {
+      // Restore a previously-removed workspace member's automatic access to this project.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      project.excludedMembers = (project.excludedMembers || []).filter((x: any) => String(x) !== data.userId);
+      await project.save();
+      await logActivity({
+        project: id,
+        workspace: String(project.workspace),
+        user: String(user!._id),
+        action: "project.member_restored",
+        detail: `Restored ${member.name}'s access to the project`,
+      });
+      const restored = await Project.findById(id)
+        .populate("members.user", "name email avatarColor designation active")
+        .populate("excludedMembers", "name email avatarColor designation active");
+      return json({ project: restored }, 200);
+    }
     return error("This user is a workspace member and already has access to every project", 409);
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -110,6 +129,34 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   const project = await Project.findById(id);
   if (!project) return error("Project not found", 404);
 
+  const ws = await Workspace.findById(project.workspace).select("owner members");
+  const isWsMember =
+    !!ws &&
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (String(ws.owner) === userId || (ws.members || []).some((m: any) => String(m.user) === userId));
+
+  if (isWsMember) {
+    // Workspace members have automatic access to every project — "removing" them from
+    // a single project means excluding them here (revertable), not deleting a record.
+    if (ws && String(ws.owner) === userId) {
+      return error("The workspace owner can't be removed from a project", 400);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!(project.excludedMembers || []).some((x: any) => String(x) === userId)) {
+      project.excludedMembers.push(userId as unknown as never);
+    }
+    await project.save();
+    await logActivity({
+      project: id,
+      workspace: String(project.workspace),
+      user: String(user!._id),
+      action: "project.member_excluded",
+      detail: removingSelf ? "Left the project" : "Removed a workspace member from this project",
+    });
+    return json({ ok: true });
+  }
+
+  // Otherwise it's a project guest — drop their per-project membership.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   project.members = project.members.filter((m: any) => String(m.user) !== userId);
   await project.save();

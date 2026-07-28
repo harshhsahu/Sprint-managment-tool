@@ -31,7 +31,14 @@ export async function GET(req: Request) {
   const projects = await Project.find(filter)
     .populate("lead", "name email avatarColor")
     .populate("members.user", "name email avatarColor")
-    .populate("workspace", "name")
+    .populate({
+      path: "workspace",
+      select: "name owner members",
+      populate: [
+        { path: "owner", select: "name email avatarColor active" },
+        { path: "members.user", select: "name email avatarColor designation active" },
+      ],
+    })
     .sort({ createdAt: 1 });
   return json({ projects });
 }

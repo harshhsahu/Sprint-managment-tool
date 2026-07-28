@@ -14,6 +14,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   const project = await Project.findById(id)
     .populate("lead", "name email avatarColor")
     .populate("members.user", "name email avatarColor designation active")
+    .populate("excludedMembers", "name email avatarColor designation active")
     .populate({
       path: "workspace",
       select: "name owner members",

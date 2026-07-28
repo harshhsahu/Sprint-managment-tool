@@ -90,6 +90,9 @@ const ProjectSchema = new Schema(
     description: { type: String, default: "" },
     lead: { type: Types.ObjectId, ref: "User" },
     members: [ProjectMemberSchema],
+    // Workspace members who have been explicitly removed from THIS project. They keep
+    // their workspace role everywhere else but lose all access here (revertable).
+    excludedMembers: [{ type: Types.ObjectId, ref: "User" }],
     statuses: [StatusSchema],
     // Task-field configuration: hide built-in optional fields + define custom ones.
     hiddenFields: [{ type: String }],

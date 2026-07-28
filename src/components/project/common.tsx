@@ -6,7 +6,7 @@ import { Filter, X, Save } from "lucide-react";
 import { fetcher, api } from "@/lib/client";
 import { Avatar, TypeIcon, PriorityBadge } from "@/components/ui";
 import { PRIORITIES, PRIORITY_META, TASK_TYPES, TYPE_META } from "@/lib/constants";
-import { cn, formatDate, isOverdue } from "@/lib/utils";
+import { cn, formatDate, isOverdue, projectAssignees } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any;
@@ -97,7 +97,7 @@ export function FilterBar({
   setFilters: (f: TaskFilters) => void;
   extra?: React.ReactNode;
 }) {
-  const members = project?.members || [];
+  const members = projectAssignees(project);
   const multiselectFields = (project?.customFields || []).filter((f: Any) => f.type === "multiselect");
   const hasFilters =
     filters.q || filters.assignee.length || filters.priority.length || filters.type.length || filters.status.length ||
@@ -237,7 +237,7 @@ export function BulkBar({
   onDone: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const members = project?.members || [];
+  const members = projectAssignees(project);
   const { data: sprintData } = useSWR<Any>(project?._id ? `/api/sprints?project=${project._id}` : null, fetcher);
 
   const apply = async (set: Any) => {

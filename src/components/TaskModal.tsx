@@ -8,7 +8,7 @@ import {
 import { fetcher, api } from "@/lib/client";
 import { Modal, Avatar, TypeIcon, Spinner } from "@/components/ui";
 import { PRIORITY_META, TYPE_META, TASK_TYPES, PRIORITIES, REQUIRABLE_TASK_FIELDS } from "@/lib/constants";
-import { cn, formatDate, isOverdue } from "@/lib/utils";
+import { cn, formatDate, isOverdue, projectAssignees } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -89,7 +89,7 @@ export default function TaskModal({
   const has = (c: string) => caps.includes(c);
   const canEdit = has("task:edit");
   const canComment = has("task:comment");
-  const members: Any[] = project?.members || [];
+  const members: Any[] = projectAssignees(project);
   const statuses: Any[] = project?.statuses || [];
   const hiddenFields: string[] = project?.hiddenFields || [];
   const showField = (id: string) => !hiddenFields.includes(id);

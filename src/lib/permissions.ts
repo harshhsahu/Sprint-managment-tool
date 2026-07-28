@@ -39,10 +39,13 @@ export async function getWorkspaceRole(user: UserDoc, workspaceId: string): Prom
 /** Effective project role for a user, or null if no access.
     Workspace membership wins (grants all projects); otherwise a project-guest role. */
 export async function getProjectRole(user: UserDoc, projectId: string): Promise<Role | null> {
-  const project = await Project.findById(projectId).select("members workspace");
+  const project = await Project.findById(projectId).select("members workspace excludedMembers");
   if (!project) return null;
 
-  const wsRole = await getWorkspaceRole(user, String(project.workspace));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const excluded = (project.excludedMembers || []).some((id: any) => String(id) === String(user._id));
+  // An excluded workspace member loses their workspace-derived access to this project.
+  const wsRole = excluded ? null : await getWorkspaceRole(user, String(project.workspace));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const guest = project.members.find((m: any) => String(m.user) === String(user._id));
