@@ -5,7 +5,11 @@ const UserSchema = new Schema(
   {
     name: { type: String, required: true, trim: true },
     email: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
-    passwordHash: { type: String, required: true },
+    // Firebase Auth is the identity provider. UID links this doc to the Firebase user.
+    firebaseUid: { type: String, index: true, sparse: true },
+    // Legacy bcrypt hash — no longer required now that Firebase owns credentials.
+    // Kept so the migration can import existing passwords into Firebase.
+    passwordHash: { type: String, required: false },
     role: { type: String, enum: ["super_admin", "member"], default: "member" },
     designation: { type: String, default: "" },
     timezone: { type: String, default: "UTC" },

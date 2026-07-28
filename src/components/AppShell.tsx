@@ -9,12 +9,15 @@ import {
   FolderKanban, Calendar, BarChart3, Rows3, GanttChartSquare, History, User as UserIcon,
 } from "lucide-react";
 import {
-  useQ, useMarkNotificationsMutation, useRespondInviteMutation, useLogoutMutation,
+  useQ, useMarkNotificationsMutation, useRespondInviteMutation, useLogoutMutation, useAppDispatch,
 } from "@/store/hooks";
+import { api } from "@/store/api";
+import { signOut } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
 import { Avatar, Modal, Button } from "@/components/ui";
 import { KanboWordmark } from "@/components/brand";
 import { cn } from "@/lib/utils";
-import { ROLE_LABELS } from "@/lib/constants";
+import { ROLE_LABELS, isSuperAdminEmail } from "@/lib/constants";
 
 /* ----------------------------- context ------------------------------ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -353,9 +356,14 @@ function Topbar({ sidebarOpen, onOpenSidebar }: { sidebarOpen: boolean; onOpenSi
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutM] = useLogoutMutation();
+  const dispatch = useAppDispatch();
 
   async function logout() {
+    await signOut(auth).catch(() => {});
     await logoutM().unwrap().catch(() => {});
+    // Wipe every cached RTK Query result so the next user never sees the
+    // previous user's data (me, dashboard, workspaces, etc.).
+    dispatch(api.util.resetApiState());
     router.push("/login");
     router.refresh();
   }
@@ -389,7 +397,7 @@ function Topbar({ sidebarOpen, onOpenSidebar }: { sidebarOpen: boolean; onOpenSi
                 <Link href="/profile" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-line/40">
                   <UserIcon size={14} /> Profile & activity
                 </Link>
-                {me?.role === "super_admin" && (
+                {isSuperAdminEmail(me?.email) && (
                   <Link href="/admin" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 rounded-lg px-3 py-2 text-sm hover:bg-line/40">
                     <Settings size={14} /> User administration
                   </Link>

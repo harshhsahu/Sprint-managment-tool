@@ -5,6 +5,7 @@ import { errMsg } from "@/store/api";
 import { Spinner, Avatar } from "@/components/ui";
 import { useApp } from "@/components/AppShell";
 import { cn } from "@/lib/utils";
+import { isSuperAdminEmail, ROLE_LABELS } from "@/lib/constants";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -15,8 +16,8 @@ export default function AdminPage() {
   const [updateUser] = useUpdateUserMutation();
 
   if (!me) return <Spinner />;
-  if (me.role !== "super_admin") {
-    return <p className="p-10 text-center text-sm text-muted">Only super admins can access user administration.</p>;
+  if (!isSuperAdminEmail(me.email)) {
+    return <p className="p-10 text-center text-sm text-muted">Only the super admin can access user administration.</p>;
   }
 
   async function patch(id: string, set: Any) {
@@ -55,15 +56,11 @@ export default function AdminPage() {
                 </td>
                 <td className="px-4 py-2 text-xs text-muted">{u.designation || "—"}</td>
                 <td className="px-4 py-2">
-                  <select
-                    className="rounded border border-line bg-card px-2 py-1 text-xs"
-                    value={u.role}
-                    disabled={u._id === me._id}
-                    onChange={(e) => patch(u._id, { role: e.target.value })}
-                  >
-                    <option value="member">Member</option>
-                    <option value="super_admin">Super Admin</option>
-                  </select>
+                  {/* Super-admin is anchored to a single designated email and can't be
+                      assigned here — the global role is shown read-only. */}
+                  <span className={cn("chip", isSuperAdminEmail(u.email) ? "bg-accent/15 text-accent" : "bg-line/40 text-muted")}>
+                    {isSuperAdminEmail(u.email) ? ROLE_LABELS.super_admin : ROLE_LABELS.member}
+                  </span>
                 </td>
                 <td className="px-4 py-2">
                   <button

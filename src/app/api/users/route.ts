@@ -1,4 +1,5 @@
 import { withAuth, json } from "@/lib/apiHelpers";
+import { isSuperAdmin } from "@/lib/permissions";
 import { User } from "@/models";
 
 /** List users (for member pickers, invites). Any authenticated user can list active users. */
@@ -8,7 +9,7 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const q = searchParams.get("q") || "";
-  const includeInactive = searchParams.get("all") === "1" && user!.role === "super_admin";
+  const includeInactive = searchParams.get("all") === "1" && isSuperAdmin(user);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const filter: any = includeInactive ? {} : { active: true };

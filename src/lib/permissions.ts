@@ -1,5 +1,5 @@
 import { Project, Workspace } from "@/models";
-import { ROLE_CAPS, type Capability, type Role } from "./constants";
+import { ROLE_CAPS, isSuperAdminEmail, type Capability, type Role } from "./constants";
 
 /* Role-based access control.
 
@@ -22,8 +22,10 @@ type UserDoc = any;
 
 const RANK: Record<Role, number> = { owner: 4, admin: 3, editor: 2, viewer: 1 };
 
+/** Super-admin is anchored to a single designated email (see SUPER_ADMIN_EMAIL),
+    not the mutable DB role, so no one can be granted it by editing a role field. */
 export function isSuperAdmin(user: UserDoc): boolean {
-  return user?.role === "super_admin";
+  return isSuperAdminEmail(user?.email);
 }
 
 /** Workspace role for a user (owner/admin/editor/viewer), or null if not a member. */

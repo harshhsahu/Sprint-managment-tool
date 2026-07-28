@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
+import { isSuperAdminEmail } from "@/lib/constants";
 
 const secret = new TextEncoder().encode(process.env.JWT_SECRET || "dev-secret");
-const PUBLIC_PATHS = ["/login", "/register"];
+const PUBLIC_PATHS = ["/login", "/register", "/forgot-password"];
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -10,10 +11,12 @@ export async function middleware(req: NextRequest) {
   const token = req.cookies.get("sm_session")?.value;
 
   let authed = false;
+  let email: string | undefined;
   if (token) {
     try {
-      await jwtVerify(token, secret);
+      const { payload } = await jwtVerify(token, secret);
       authed = true;
+      email = typeof payload.email === "string" ? payload.email : undefined;
     } catch {
       authed = false;
     }
@@ -23,6 +26,13 @@ export async function middleware(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
+  }
+  // /admin is reserved for the single designated super admin.
+  if (authed && pathname.startsWith("/admin") && !isSuperAdminEmail(email)) {
+    const url = req.nextUrl.clone();
+    url.pathname = "/dashboard";
+    url.search = "";
     return NextResponse.redirect(url);
   }
   if (authed && isPublic) {

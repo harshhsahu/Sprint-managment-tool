@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Workspace, Project, Task, Sprint } from "@/models";
-import { getWorkspaceRole, isWorkspaceManager } from "@/lib/permissions";
+import { getWorkspaceRole, isWorkspaceManager, isSuperAdmin } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -48,7 +48,7 @@ export async function DELETE(_req: Request, { params }: { params: Promise<{ id: 
 
   const workspace = await Workspace.findById(id);
   if (!workspace) return error("Workspace not found", 404);
-  if (String(workspace.owner) !== String(user!._id) && user!.role !== "super_admin") {
+  if (String(workspace.owner) !== String(user!._id) && !isSuperAdmin(user)) {
     return error("Only the workspace owner can delete it", 403);
   }
 

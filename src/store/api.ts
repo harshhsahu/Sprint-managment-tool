@@ -257,10 +257,10 @@ export const api = createApi({
     }),
 
     /* ------------------------------- auth -------------------------------- */
-    login: b.mutation<Any, { email: string; password: string }>({
+    login: b.mutation<Any, { idToken: string }>({
       query: (body) => write("/api/auth/login", "POST", body),
     }),
-    register: b.mutation<Any, Any>({
+    register: b.mutation<Any, { idToken: string; name: string; designation?: string; timezone?: string }>({
       query: (body) => write("/api/auth/register", "POST", body),
     }),
     logout: b.mutation<Any, void>({

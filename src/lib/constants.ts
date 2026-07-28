@@ -36,6 +36,19 @@ export type Role = (typeof ROLES)[number];
 /** Roles assignable via a dropdown (owner is reserved for the creator). */
 export const ASSIGNABLE_ROLES = ["admin", "editor", "viewer"] as const;
 
+/* ---------------------------- Super admin ----------------------------
+   Super-admin status is anchored to ONE designated email — not a mutable DB
+   role. Only this account can reach /admin and manage global users. Keeping it
+   email-based guarantees exactly one super admin that can't be granted to
+   anyone else by editing a role field. The DB `role` is kept in sync for
+   display/back-compat (see the register route + migration). */
+export const SUPER_ADMIN_EMAIL = "harshksahu11@gmail.com";
+
+/** True if the given email is the designated super admin (case-insensitive). */
+export function isSuperAdminEmail(email?: string | null): boolean {
+  return !!email && email.trim().toLowerCase() === SUPER_ADMIN_EMAIL;
+}
+
 export const ROLE_LABELS: Record<string, string> = {
   // global user roles (user administration only)
   super_admin: "Super Admin",

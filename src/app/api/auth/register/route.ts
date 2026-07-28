@@ -1,16 +1,18 @@
-import bcrypt from "bcryptjs";
 import { z } from "zod";
+import { cookies } from "next/headers";
 import { dbConnect } from "@/lib/db";
 import { User } from "@/models";
 import { json, error, parseBody } from "@/lib/apiHelpers";
 import { signSession, SESSION_COOKIE } from "@/lib/auth";
 import { avatarColor } from "@/lib/utils";
-import { cookies } from "next/headers";
+import { isSuperAdminEmail } from "@/lib/constants";
+import { adminAuth } from "@/lib/firebase/admin";
 
+// The Firebase user is created client-side; we receive its ID token plus the
+// profile fields we store in Mongo.
 const schema = z.object({
+  idToken: z.string().min(1),
   name: z.string().min(2).max(80),
-  email: z.string().email(),
-  password: z.string().min(8).max(128),
   designation: z.string().max(80).optional(),
   timezone: z.string().max(60).optional(),
 });
@@ -20,20 +22,27 @@ export async function POST(req: Request) {
   const { data, res } = await parseBody(req, schema);
   if (res) return res;
 
-  const existing = await User.findOne({ email: data.email.toLowerCase() });
-  if (existing) return error("An account with this email already exists", 409);
+  let decoded;
+  try {
+    decoded = await adminAuth.verifyIdToken(data.idToken);
+  } catch {
+    return error("Invalid or expired sign-in token", 401);
+  }
 
-  const passwordHash = await bcrypt.hash(data.password, 10);
-  const isFirstUser = (await User.countDocuments()) === 0;
+  const email = decoded.email?.toLowerCase();
+  if (!email) return error("Firebase account has no email", 400);
+
+  const existing = await User.findOne({ $or: [{ email }, { firebaseUid: decoded.uid }] });
+  if (existing) return error("An account with this email already exists", 409);
 
   const user = await User.create({
     name: data.name,
-    email: data.email.toLowerCase(),
-    passwordHash,
+    email,
+    firebaseUid: decoded.uid,
     designation: data.designation || "",
-    timezone: data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    avatarColor: avatarColor(data.email),
-    role: isFirstUser ? "super_admin" : "member", // first user becomes super admin
+    timezone: data.timezone || "UTC",
+    avatarColor: avatarColor(email),
+    role: isSuperAdminEmail(email) ? "super_admin" : "member", // super admin is the one designated email
   });
 
   const token = await signSession({

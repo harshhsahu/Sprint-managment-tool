@@ -3,14 +3,33 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { auth } from "@/lib/firebase/client";
+import { GoogleSignInButton } from "@/components/auth/GoogleSignInButton";
 import { useRegisterMutation } from "@/store/hooks";
 import { errMsg } from "@/store/api";
+
+/** Map Firebase auth error codes to friendly messages. */
+function firebaseErr(e: unknown): string {
+  const code = (e as { code?: string })?.code || "";
+  switch (code) {
+    case "auth/email-already-in-use":
+      return "An account with this email already exists";
+    case "auth/invalid-email":
+      return "Please enter a valid email address";
+    case "auth/weak-password":
+      return "Password is too weak (at least 8 characters)";
+    default:
+      return errMsg(e);
+  }
+}
 
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", password: "", designation: "" });
   const [err, setErr] = useState("");
-  const [register, { isLoading: busy }] = useRegisterMutation();
+  const [busy, setBusy] = useState(false);
+  const [register] = useRegisterMutation();
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -18,12 +37,26 @@ export default function RegisterPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
+    setBusy(true);
     try {
-      await register(form).unwrap();
+      // 1. Create the Firebase user (owns the credential).
+      const cred = await createUserWithEmailAndPassword(auth, form.email.trim(), form.password);
+      const idToken = await cred.user.getIdToken();
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      try {
+        // 2. Create the matching Mongo profile + app session.
+        await register({ idToken, name: form.name, designation: form.designation, timezone }).unwrap();
+      } catch (serverErr) {
+        // Roll back the orphaned Firebase user so the email stays free to retry.
+        await cred.user.delete().catch(() => {});
+        throw serverErr;
+      }
       router.push("/dashboard");
       router.refresh();
     } catch (e) {
-      setErr(errMsg(e));
+      setErr(firebaseErr(e));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -54,6 +87,18 @@ export default function RegisterPage() {
           {busy ? "Creating account…" : "Create account"}
         </button>
       </form>
+      <div className="my-4 flex items-center gap-3 text-xs text-muted">
+        <span className="h-px flex-1 bg-line" />
+        OR
+        <span className="h-px flex-1 bg-line" />
+      </div>
+      <GoogleSignInButton
+        onError={setErr}
+        onDone={() => {
+          router.push("/dashboard");
+          router.refresh();
+        }}
+      />
       <div className="mt-4 text-center text-sm">
         Already have an account?{" "}
         <Link href="/login" className="text-accent hover:underline">Sign in</Link>
