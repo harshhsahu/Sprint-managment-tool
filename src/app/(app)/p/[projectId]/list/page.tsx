@@ -1,9 +1,9 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import useSWR from "swr";
 import { ArrowUpDown, Plus } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
+import { api } from "@/store/api";
+import { useQ, useAppDispatch, useCreateTaskMutation, useUpdateTaskMutation } from "@/store/hooks";
 import { Spinner, Avatar, TypeIcon } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import {
@@ -36,8 +36,12 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
   const [newTitle, setNewTitle] = useState("");
   const [page, setPage] = useState(1);
 
+  const dispatch = useAppDispatch();
+  const [createTask] = useCreateTaskMutation();
+  const [updateTask] = useUpdateTaskMutation();
+
   const url = `/api/tasks?project=${projectId}&sort=${sort}&page=${page}&limit=50${filtersToQuery(filters)}`;
-  const { data, mutate, isLoading } = useSWR<Any>(url, fetcher, { keepPreviousData: true });
+  const { data, mutate, isLoading } = useQ.useTasks(url);
   const tasks: Any[] = useMemo(() => data?.tasks || [], [data]);
   const statuses: Any[] = project?.statuses || [];
   const groups = useGroups(tasks, groupBy, project);
@@ -50,16 +54,25 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
   async function quickAdd(e: React.FormEvent) {
     e.preventDefault();
     if (!newTitle.trim()) return;
-    const res = await api<Any>("/api/tasks", "POST", { project: projectId, title: newTitle.trim() });
+    const res = await createTask({ project: projectId, title: newTitle.trim() }).unwrap();
     setNewTitle("");
-    mutate();
     // If the project marks fields as required, open the new task so they can be filled.
     if (res?.task?._id && project?.requiredFields?.length) setOpenTask(res.task._id);
   }
 
   async function inlinePatch(taskId: string, set: Any) {
-    await api(`/api/tasks/${taskId}`, "PATCH", set);
-    mutate();
+    // optimistic — the row's cell reflects the change instantly.
+    const patch = dispatch(
+      api.util.updateQueryData("getTasks", url, (draft: Any) => {
+        const t = draft?.tasks?.find((x: Any) => x._id === taskId);
+        if (t) Object.assign(t, set);
+      })
+    );
+    try {
+      await updateTask({ id: taskId, set }).unwrap();
+    } catch {
+      patch.undo();
+    }
   }
 
   const toggleSelect = (id: string) =>

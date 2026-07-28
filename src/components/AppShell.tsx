@@ -3,14 +3,15 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import useSWR from "swr";
 import {
   Kanban, LayoutDashboard, ListChecks, Search, Bell, Sun, Moon, LogOut,
   ChevronDown, ChevronLeft, PanelLeftClose, PanelLeftOpen, Plus, Settings, Users,
   FolderKanban, Calendar, BarChart3, Rows3, GanttChartSquare, History, User as UserIcon,
 } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
-import { Avatar, Modal } from "@/components/ui";
+import {
+  useQ, useMarkNotificationsMutation, useRespondInviteMutation, useLogoutMutation,
+} from "@/store/hooks";
+import { Avatar, Modal, Button } from "@/components/ui";
 import { KanboWordmark } from "@/components/brand";
 import { cn } from "@/lib/utils";
 import { ROLE_LABELS } from "@/lib/constants";
@@ -55,7 +56,7 @@ function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const router = useRouter();
-  const { data } = useSWR<Any>(open && q.length >= 2 ? `/api/search?q=${encodeURIComponent(q)}` : null, fetcher);
+  const { data } = useQ.useSearch(open && q.length >= 2 ? q : null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -141,22 +142,21 @@ function NotificationsBell() {
   const [busyInvite, setBusyInvite] = useState<string | null>(null);
   const router = useRouter();
   const { refresh } = useApp();
-  const { data, mutate } = useSWR<Any>("/api/notifications", fetcher, { refreshInterval: 30000 });
-  const { data: invData, mutate: mutInv } = useSWR<Any>("/api/invites", fetcher, { refreshInterval: 30000 });
+  const { data } = useQ.useNotifications({ pollingInterval: 30000 });
+  const { data: invData } = useQ.useInvites({ pollingInterval: 30000 });
+  const [markNotifications] = useMarkNotificationsMutation();
+  const [respondInviteM] = useRespondInviteMutation();
   const invites: Any[] = invData?.invites || [];
   const unread = (data?.unreadCount || 0) + invites.length;
 
   async function markAll() {
-    await api("/api/notifications", "PATCH", {});
-    mutate();
+    await markNotifications({}).unwrap();
   }
 
   async function respondInvite(id: string, action: "accept" | "reject") {
     setBusyInvite(id);
     try {
-      await api(`/api/invites/${id}`, "PATCH", { action });
-      mutInv();
-      mutate();
+      await respondInviteM({ id, action }).unwrap();
       refresh(); // accepting grants project access — reload the sidebar's project list
     } finally {
       setBusyInvite(null);
@@ -200,20 +200,21 @@ function NotificationsBell() {
                         </div>
                       </div>
                       <div className="mt-2 flex gap-2 pl-9">
-                        <button
-                          className="btn-primary !py-1 text-xs"
-                          disabled={busyInvite === inv._id}
+                        <Button
+                          pending={busyInvite === inv._id}
+                          className="!py-1 text-xs"
                           onClick={() => respondInvite(inv._id, "accept")}
                         >
                           Accept
-                        </button>
-                        <button
-                          className="btn-ghost !py-1 text-xs"
+                        </Button>
+                        <Button
+                          variant="ghost"
                           disabled={busyInvite === inv._id}
+                          className="!py-1 text-xs"
                           onClick={() => respondInvite(inv._id, "reject")}
                         >
                           Decline
-                        </button>
+                        </Button>
                       </div>
                     </div>
                   ))}
@@ -227,8 +228,7 @@ function NotificationsBell() {
                   key={n._id}
                   className={cn("flex w-full gap-3 border-b border-line px-4 py-3 text-left text-sm hover:bg-line/30", !n.read && "bg-accent/5")}
                   onClick={async () => {
-                    await api("/api/notifications", "PATCH", { ids: [n._id] });
-                    mutate();
+                    await markNotifications({ ids: [n._id] }).unwrap();
                     setOpen(false);
                     if (n.link) router.push(n.link);
                   }}
@@ -352,9 +352,10 @@ function Topbar({ sidebarOpen, onOpenSidebar }: { sidebarOpen: boolean; onOpenSi
   const { me } = useApp();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [logoutM] = useLogoutMutation();
 
   async function logout() {
-    await api("/api/auth/logout", "POST");
+    await logoutM().unwrap().catch(() => {});
     router.push("/login");
     router.refresh();
   }
@@ -413,9 +414,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (typeof window !== "undefined" && window.innerWidth < 1024) setSidebarOpen(false);
   }, []);
-  const { data: meData } = useSWR<Any>("/api/auth/me", fetcher);
-  const { data: wsData, mutate: mutWs } = useSWR<Any>("/api/workspaces", fetcher);
-  const { data: projData, mutate: mutProj } = useSWR<Any>("/api/projects", fetcher);
+  const { data: meData } = useQ.useMe();
+  const { data: wsData, mutate: mutWs } = useQ.useWorkspaces();
+  const { data: projData, mutate: mutProj } = useQ.useProjects();
 
   const ctx = {
     me: meData?.user || null,

@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import { ButtonHTMLAttributes, ReactNode, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
 import { PRIORITY_META, TYPE_META, type Priority, type TaskType } from "@/lib/constants";
@@ -69,6 +69,39 @@ export function StatusBadge({ status, statuses }: { status: string; statuses?: {
     <span className="chip" style={{ background: `${s?.color || "#64748b"}22`, color: s?.color || "#64748b" }}>
       {s?.name || status}
     </span>
+  );
+}
+
+/* ------------------------------ Button ------------------------------ */
+/**
+ * Button with built-in click feel and async feedback.
+ * - The `:active` press animation (see globals.css) fires instantly on click.
+ * - Pass `pending` while a mutation runs: the label gains a spinner and the
+ *   button becomes non-interactive, so the user sees the action registered
+ *   immediately instead of a dead button while the API call is in flight.
+ */
+export function Button({
+  variant = "primary",
+  pending = false,
+  className,
+  children,
+  disabled,
+  ...props
+}: {
+  variant?: "primary" | "ghost" | "danger";
+  pending?: boolean;
+} & ButtonHTMLAttributes<HTMLButtonElement>) {
+  const base = variant === "ghost" ? "btn-ghost" : variant === "danger" ? "btn-danger" : "btn-primary";
+  return (
+    <button
+      {...props}
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      className={cn(base, pending && "is-pending", className)}
+    >
+      {pending && <span className="btn-spinner" aria-hidden />}
+      {children}
+    </button>
   );
 }
 

@@ -1,8 +1,7 @@
 "use client";
 
 import { use, useState } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/lib/client";
+import { useQ } from "@/store/hooks";
 import { Spinner, Avatar } from "@/components/ui";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
 
@@ -10,7 +9,7 @@ export default function ActivityPage({ params }: { params: Promise<{ projectId: 
   const { projectId } = use(params);
   const { project } = useProject(projectId);
   const [page, setPage] = useState(1);
-  const { data, isLoading } = useSWR<Any>(`/api/activity?project=${projectId}&page=${page}&limit=40`, fetcher, { keepPreviousData: true });
+  const { data, isLoading } = useQ.useActivity(`/api/activity?project=${projectId}&page=${page}&limit=40`);
 
   if (!project) return <Spinner label="Loading activity…" />;
 

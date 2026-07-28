@@ -1,9 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import useSWR from "swr";
 import { Filter, X, Save } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
+import { useQ, useSaveFilterMutation, useBulkTasksMutation } from "@/store/hooks";
+import { errMsg } from "@/store/api";
 import { Avatar, TypeIcon, PriorityBadge } from "@/components/ui";
 import { PRIORITIES, PRIORITY_META, TASK_TYPES, TYPE_META } from "@/lib/constants";
 import { cn, formatDate, isOverdue, projectAssignees } from "@/lib/utils";
@@ -13,7 +13,7 @@ export type Any = any;
 
 /* ------------------------------ data hooks ----------------------------- */
 export function useProject(projectId: string) {
-  const { data, mutate } = useSWR<Any>(projectId ? `/api/projects/${projectId}` : null, fetcher);
+  const { data, mutate } = useQ.useProject(projectId || null);
   return {
     project: data?.project,
     myRole: data?.myRole,
@@ -102,13 +102,14 @@ export function FilterBar({
   const hasFilters =
     filters.q || filters.assignee.length || filters.priority.length || filters.type.length || filters.status.length ||
     Object.values(filters.cf || {}).some((v) => v.length);
-  const { data: savedData, mutate: mutSaved } = useSWR<Any>(project?._id ? `/api/filters?project=${project._id}` : null, fetcher);
+  const { data: savedData } = useQ.useFilters(project?._id ? `/api/filters?project=${project._id}` : null);
+  const [saveFilter] = useSaveFilterMutation();
 
   async function saveCurrent() {
     const name = prompt("Name this filter:");
     if (!name) return;
-    await api("/api/filters", "POST", { name, project: project._id, filters });
-    mutSaved();
+    // invalidatesTags refetches the saved-filters list automatically.
+    await saveFilter({ name, project: project._id, filters });
   }
 
   return (
@@ -236,16 +237,15 @@ export function BulkBar({
   clear: () => void;
   onDone: () => void;
 }) {
-  const [busy, setBusy] = useState(false);
   const members = projectAssignees(project);
-  const { data: sprintData } = useSWR<Any>(project?._id ? `/api/sprints?project=${project._id}` : null, fetcher);
+  const { data: sprintData } = useQ.useSprints(project?._id ? `/api/sprints?project=${project._id}` : null);
+  const [bulkTasks, { isLoading: busy }] = useBulkTasksMutation();
 
   const apply = async (set: Any) => {
-    setBusy(true);
     try {
-      await api("/api/tasks/bulk", "PATCH", { taskIds: selected, set });
+      await bulkTasks({ taskIds: selected, set }).unwrap();
       onDone(); clear();
-    } finally { setBusy(false); }
+    } catch (e) { alert(errMsg(e)); }
   };
 
   const selCls = "rounded border border-line bg-card px-2 py-1 text-xs";

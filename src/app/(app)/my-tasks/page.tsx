@@ -1,8 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/lib/client";
+import { useQ } from "@/store/hooks";
 import { Spinner, TypeIcon, PriorityBadge, EmptyState } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { ListChecks } from "lucide-react";
@@ -15,8 +14,8 @@ export default function MyTasksPage() {
   const [scope, setScope] = useState<"assignee" | "reporter">("assignee");
   const [openTask, setOpenTask] = useState<Any>(null);
   const url = `/api/tasks?${scope}=me&sort=dueDate&limit=100`;
-  const { data, mutate, isLoading } = useSWR<Any>(url, fetcher, { keepPreviousData: true });
-  const { data: projData } = useSWR<Any>("/api/projects", fetcher);
+  const { data, mutate, isLoading } = useQ.useTasks(url);
+  const { data: projData } = useQ.useProjects();
   const tasks: Any[] = useMemo(() => data?.tasks || [], [data]);
   const projects: Any[] = projData?.projects || [];
 

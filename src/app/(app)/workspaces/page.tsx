@@ -2,9 +2,12 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
 import { Plus, FolderKanban, Users, Settings, Trash2 } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
+import {
+  useQ, useCreateWorkspaceMutation, useDeleteWorkspaceMutation, useCreateProjectMutation,
+  useInviteWorkspaceMemberMutation, useUpdateWorkspaceMemberMutation, useRemoveWorkspaceMemberMutation,
+} from "@/store/hooks";
+import { errMsg } from "@/store/api";
 import { Modal, Avatar, Spinner, EmptyState } from "@/components/ui";
 import { useApp } from "@/components/AppShell";
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from "@/lib/constants";
@@ -13,9 +16,15 @@ import { ROLE_LABELS, ASSIGNABLE_ROLES } from "@/lib/constants";
 type Any = any;
 
 export default function WorkspacesPage() {
-  const { data, mutate, isLoading } = useSWR<Any>("/api/workspaces", fetcher);
-  const { data: projData, mutate: mutProj } = useSWR<Any>("/api/projects", fetcher);
+  const { data, isLoading } = useQ.useWorkspaces();
+  const { data: projData } = useQ.useProjects();
   const { refresh, me } = useApp();
+  const [createWorkspaceM] = useCreateWorkspaceMutation();
+  const [deleteWorkspaceM] = useDeleteWorkspaceMutation();
+  const [createProjectM] = useCreateProjectMutation();
+  const [inviteMemberM] = useInviteWorkspaceMemberMutation();
+  const [updateMemberM] = useUpdateWorkspaceMemberMutation();
+  const [removeMemberM] = useRemoveWorkspaceMemberMutation();
   const [createWs, setCreateWs] = useState(false);
   const [createProjIn, setCreateProjIn] = useState<Any>(null);
   const [manageWs, setManageWs] = useState<Any>(null);
@@ -30,41 +39,40 @@ export default function WorkspacesPage() {
     e.preventDefault();
     setErr("");
     try {
-      await api("/api/workspaces", "POST", { name: form.name, description: form.description });
+      await createWorkspaceM({ name: form.name, description: form.description }).unwrap();
       setCreateWs(false);
       setForm({ name: "", description: "", key: "" });
-      mutate(); refresh();
-    } catch (e) { setErr((e as Error).message); }
+      refresh();
+    } catch (e) { setErr(errMsg(e)); }
   }
 
   async function submitProject(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     try {
-      await api("/api/projects", "POST", {
+      await createProjectM({
         workspace: createProjIn._id, name: form.name, key: form.key, description: form.description,
-      });
+      }).unwrap();
       setCreateProjIn(null);
       setForm({ name: "", description: "", key: "" });
-      mutProj(); refresh();
-    } catch (e) { setErr((e as Error).message); }
+      refresh();
+    } catch (e) { setErr(errMsg(e)); }
   }
 
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     try {
-      const res = await api<Any>(`/api/workspaces/${manageWs._id}/members`, "POST", invite);
+      const res = await inviteMemberM({ id: manageWs._id, body: invite }).unwrap();
       setManageWs(res.workspace);
       setInvite({ email: "", role: "member" });
-      mutate();
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(errMsg(e)); }
   }
 
   async function deleteWorkspace(ws: Any) {
     if (!confirm(`Delete workspace "${ws.name}" and ALL of its projects and tasks? This cannot be undone.`)) return;
-    await api(`/api/workspaces/${ws._id}`, "DELETE");
-    mutate(); mutProj(); refresh();
+    await deleteWorkspaceM(ws._id).unwrap();
+    refresh();
   }
 
   const isWsAdmin = (ws: Any) =>
@@ -201,8 +209,8 @@ export default function WorkspacesPage() {
                         className="ml-auto rounded border border-line bg-card px-2 py-1 text-xs"
                         value={m.role}
                         onChange={async (e) => {
-                          const res = await api<Any>(`/api/workspaces/${manageWs._id}/members`, "PATCH", { userId: m.user._id, role: e.target.value });
-                          setManageWs(res.workspace); mutate();
+                          const res = await updateMemberM({ id: manageWs._id, userId: m.user._id, role: e.target.value }).unwrap();
+                          setManageWs(res.workspace);
                         }}
                       >
                         {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
@@ -212,9 +220,12 @@ export default function WorkspacesPage() {
                       <button
                         className="text-xs text-red-500 hover:underline"
                         onClick={async () => {
-                          await api(`/api/workspaces/${manageWs._id}/members?userId=${m.user._id}`, "DELETE");
-                          const res = await fetcher<Any>(`/api/workspaces/${manageWs._id}`);
-                          setManageWs(res.workspace); mutate();
+                          await removeMemberM({ id: manageWs._id, userId: m.user._id }).unwrap();
+                          // Reflect the removal locally; the Workspaces list refetches via tags.
+                          setManageWs({
+                            ...manageWs,
+                            members: (manageWs.members || []).filter((x: Any) => (x.user?._id || x.user) !== m.user._id),
+                          });
                         }}
                       >
                         Remove
