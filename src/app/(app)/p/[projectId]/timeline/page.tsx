@@ -1,8 +1,7 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/lib/client";
+import { useQ } from "@/store/hooks";
 import { Spinner, TypeIcon, EmptyState } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
@@ -17,9 +16,9 @@ export default function TimelinePage({ params }: { params: Promise<{ projectId: 
   const [openTask, setOpenTask] = useState<string | null>(null);
   const [scope, setScope] = useState<"epics" | "all">("epics");
 
-  const { data, mutate, isLoading } = useSWR<Any>(`/api/tasks?project=${projectId}&limit=200&sort=createdAt`, fetcher);
+  const { data, mutate, isLoading } = useQ.useTasks(`/api/tasks?project=${projectId}&limit=200&sort=createdAt`);
   const tasks: Any[] = useMemo(() => data?.tasks || [], [data]);
-  const { data: sprintData } = useSWR<Any>(`/api/sprints?project=${projectId}`, fetcher);
+  const { data: sprintData } = useQ.useSprints(`/api/sprints?project=${projectId}`);
   const sprints: Any[] = sprintData?.sprints || [];
 
   const rows = useMemo(() => {

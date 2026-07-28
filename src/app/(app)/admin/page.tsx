@@ -1,7 +1,7 @@
 "use client";
 
-import useSWR from "swr";
-import { fetcher, api } from "@/lib/client";
+import { useQ, useUpdateUserMutation } from "@/store/hooks";
+import { errMsg } from "@/store/api";
 import { Spinner, Avatar } from "@/components/ui";
 import { useApp } from "@/components/AppShell";
 import { cn } from "@/lib/utils";
@@ -11,7 +11,8 @@ type Any = any;
 
 export default function AdminPage() {
   const { me } = useApp();
-  const { data, mutate } = useSWR<Any>("/api/users?all=1", fetcher);
+  const { data } = useQ.useUsers("/api/users?all=1");
+  const [updateUser] = useUpdateUserMutation();
 
   if (!me) return <Spinner />;
   if (me.role !== "super_admin") {
@@ -19,10 +20,10 @@ export default function AdminPage() {
   }
 
   async function patch(id: string, set: Any) {
+    // updateUser invalidates the Users list → auto-refetch.
     try {
-      await api(`/api/users/${id}`, "PATCH", set);
-      mutate();
-    } catch (e) { alert((e as Error).message); }
+      await updateUser({ id, set }).unwrap();
+    } catch (e) { alert(errMsg(e)); }
   }
 
   return (

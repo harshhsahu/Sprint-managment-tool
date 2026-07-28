@@ -1,9 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import useSWR from "swr";
-import { fetcher, api } from "@/lib/client";
-import { Spinner, Avatar } from "@/components/ui";
+import { useQ, useUpdateMeMutation } from "@/store/hooks";
+import { Spinner, Avatar, Button } from "@/components/ui";
 import { AVATAR_COLORS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
@@ -17,8 +16,9 @@ const TIMEZONES = [
 ];
 
 export default function ProfilePage() {
-  const { data, mutate } = useSWR<Any>("/api/auth/me", fetcher);
-  const { data: actData } = useSWR<Any>("/api/activity?user=me&limit=25", fetcher);
+  const { data } = useQ.useMe();
+  const { data: actData } = useQ.useActivity("/api/activity?user=me&limit=25");
+  const [updateMe, { isLoading: saving }] = useUpdateMeMutation();
   const me = data?.user;
   const [form, setForm] = useState({ name: "", designation: "", timezone: "UTC", avatarColor: "" });
   const [msg, setMsg] = useState("");
@@ -32,8 +32,7 @@ export default function ProfilePage() {
 
   async function save(e: React.FormEvent) {
     e.preventDefault();
-    await api("/api/auth/me", "PATCH", form);
-    mutate();
+    await updateMe(form).unwrap();
     setMsg("Profile saved");
     setTimeout(() => setMsg(""), 2000);
   }
@@ -74,7 +73,7 @@ export default function ProfilePage() {
           </select>
         </div>
         {msg && <p className="text-sm text-green-600">{msg}</p>}
-        <button className="btn-primary">Save profile</button>
+        <Button pending={saving}>Save profile</Button>
       </form>
 
       <section className="card p-5">

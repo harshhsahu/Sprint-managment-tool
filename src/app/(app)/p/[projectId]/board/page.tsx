@@ -2,10 +2,12 @@
 
 import { use, useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import useSWR from "swr";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Plus, AlertTriangle } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
+import { api } from "@/store/api";
+import {
+  useQ, useAppDispatch, useCreateTaskMutation, useReorderTasksMutation, useUpdateTaskMutation,
+} from "@/store/hooks";
 import { Spinner } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import {
@@ -17,7 +19,7 @@ import { cn } from "@/lib/utils";
 function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: string; status: string; sprintId?: string | null; onCreated: (taskId?: string) => void }) {
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [createTask, { isLoading: busy }] = useCreateTaskMutation();
   const ref = useRef<HTMLTextAreaElement>(null);
 
   // Create the task and keep the box open (cleared + focused) so you can rapidly add more.
@@ -25,15 +27,10 @@ function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: st
     e.preventDefault();
     const value = title.trim();
     if (!value || busy) return;
-    setBusy(true);
-    try {
-      const res = await api<Any>("/api/tasks", "POST", { project: projectId, title: value, status, sprint: sprintId || null });
-      setTitle("");
-      onCreated(res?.task?._id);
-      ref.current?.focus(); // stay in "add mode" for the next task
-    } finally {
-      setBusy(false);
-    }
+    const res = await createTask({ project: projectId, title: value, status, sprint: sprintId || null }).unwrap();
+    setTitle("");
+    onCreated(res?.task?._id);
+    ref.current?.focus(); // stay in "add mode" for the next task
   }
   if (!open) {
     return (
@@ -76,12 +73,16 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
     if (t) setOpenTask(t);
   }, [searchParams]);
 
-  const { data: sprintData } = useSWR<Any>(`/api/sprints?project=${projectId}`, fetcher);
+  const dispatch = useAppDispatch();
+  const [reorderTasks] = useReorderTasksMutation();
+  const [updateTask] = useUpdateTaskMutation();
+
+  const { data: sprintData } = useQ.useSprints(`/api/sprints?project=${projectId}`);
   const activeSprint = (sprintData?.sprints || []).find((s: Any) => s.status === "active");
   const sprintFilter = sprintScope === "active" && activeSprint ? `&sprint=${activeSprint._id}` : "";
 
   const tasksUrl = `/api/tasks?project=${projectId}&sort=order&limit=200${sprintFilter}${filtersToQuery(filters)}`;
-  const { data, mutate, isLoading } = useSWR<Any>(tasksUrl, fetcher, { keepPreviousData: true });
+  const { data, mutate, isLoading } = useQ.useTasks(tasksUrl);
   const tasks: Any[] = useMemo(() => data?.tasks || [], [data]);
   const statuses: Any[] = project?.statuses || [];
   const lanes = useGroups(tasks, swimlane, project);
@@ -105,20 +106,25 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
     else if (!after) newOrder = before.order + 1;
     else newOrder = (before.order + after.order) / 2;
 
-    // optimistic update
-    mutate(
-      { ...data, tasks: tasks.map((t) => (t._id === draggableId ? { ...t, status: destStatus, order: newOrder } : t)) },
-      { revalidate: false }
+    // optimistic update — the card moves instantly, before any API round-trip.
+    const patch = dispatch(
+      api.util.updateQueryData("getTasks", tasksUrl, (draft: Any) => {
+        const t = draft?.tasks?.find((x: Any) => x._id === draggableId);
+        if (t) { t.status = destStatus; t.order = newOrder; }
+      })
     );
-    await api("/api/tasks/reorder", "POST", {
-      project: projectId,
-      updates: [{ id: draggableId, order: newOrder, status: destStatus !== srcStatus ? destStatus : undefined }],
-    });
-    // status change also needs the full PATCH for notifications/timestamps
-    if (destStatus !== srcStatus) {
-      await api(`/api/tasks/${draggableId}`, "PATCH", { status: destStatus });
+    try {
+      await reorderTasks({
+        project: projectId,
+        updates: [{ id: draggableId, order: newOrder, status: destStatus !== srcStatus ? destStatus : undefined }],
+      }).unwrap();
+      // status change also needs the full PATCH for notifications/timestamps
+      if (destStatus !== srcStatus) {
+        await updateTask({ id: draggableId, set: { status: destStatus } }).unwrap();
+      }
+    } catch {
+      patch.undo(); // roll the card back if the server rejects the move
     }
-    mutate();
   }
 
   const toggleSelect = (id: string) =>

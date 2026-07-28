@@ -2,10 +2,14 @@
 
 import { use, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import useSWR from "swr";
 import { Plus, Trash2, GripVertical, ArchiveRestore, Archive, Send, Mail } from "lucide-react";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
-import { fetcher, api } from "@/lib/client";
+import {
+  useQ, useUpdateTaskMutation, useUpdateProjectMutation, useDeleteProjectMutation,
+  useCreateProjectInviteMutation, useDeleteProjectInviteMutation,
+  useUpdateProjectMemberMutation, useRemoveProjectMemberMutation, useRestoreProjectMemberMutation,
+} from "@/store/hooks";
+import { errMsg } from "@/store/api";
 import { Spinner, Avatar, TypeIcon, StatusBadge } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
@@ -38,22 +42,30 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const [msg, setMsg] = useState("");
   const [err, setErr] = useState("");
 
-  const { data: archivedData, mutate: mutArchived } = useSWR<Any>(`/api/tasks?project=${projectId}&archived=1&limit=200&sort=-updatedAt`, fetcher);
+  const { data: archivedData, mutate: mutArchived } = useQ.useTasks(`/api/tasks?project=${projectId}&archived=1&limit=200&sort=-updatedAt`);
   const [openTask, setOpenTask] = useState<string | null>(null);
   const isAdmin = myCapabilities.includes("project:manage");
   const canManageMembers = myCapabilities.includes("member:manage");
   const canEditTasks = myCapabilities.includes("task:edit");
   const archivedTasks: Any[] = archivedData?.tasks || [];
 
-  const { data: invitesData, mutate: mutInvites } = useSWR<Any>(
-    canManageMembers ? `/api/projects/${projectId}/invites` : null,
-    fetcher
+  const [updateTask] = useUpdateTaskMutation();
+  const [updateProject] = useUpdateProjectMutation();
+  const [deleteProjectM] = useDeleteProjectMutation();
+  const [createInvite] = useCreateProjectInviteMutation();
+  const [deleteInvite] = useDeleteProjectInviteMutation();
+  const [updateMember] = useUpdateProjectMemberMutation();
+  const [removeMember] = useRemoveProjectMemberMutation();
+  const [restoreMemberM] = useRestoreProjectMemberMutation();
+
+  const { data: invitesData } = useQ.useProjectInvites(
+    canManageMembers ? `/api/projects/${projectId}/invites` : null
   );
   const pendingInvites: Any[] = (invitesData?.invites || []).filter((i: Any) => i.status === "pending");
 
   async function restoreTask(id: string) {
-    await api(`/api/tasks/${id}`, "PATCH", { archived: false });
-    mutArchived();
+    // updateTask invalidates the Tasks lists (including this archived query) → refetch.
+    await updateTask({ id, set: { archived: false } }).unwrap();
   }
 
   useEffect(() => {
@@ -71,11 +83,11 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   async function save(patch: Any, note: string) {
     setErr(""); setMsg("");
     try {
-      await api(`/api/projects/${projectId}`, "PATCH", patch);
+      await updateProject({ id: projectId, set: patch }).unwrap();
       setMsg(note);
       mutate(); refresh();
       setTimeout(() => setMsg(""), 2500);
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(errMsg(e)); }
   }
 
   function onStatusDrag(r: DropResult) {
@@ -91,22 +103,20 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     if (!inviteEmail.trim()) return;
     setErr(""); setMsg("");
     try {
-      await api(`/api/projects/${projectId}/invites`, "POST", { email: inviteEmail.trim(), role: inviteRole });
+      await createInvite({ id: projectId, email: inviteEmail.trim(), role: inviteRole }).unwrap();
       setInviteEmail("");
       setMsg(`Invitation sent to ${inviteEmail.trim()}`);
       setTimeout(() => setMsg(""), 2500);
-      mutInvites();
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(errMsg(e)); }
   }
 
   async function revokeInvite(id: string) {
-    await api(`/api/projects/${projectId}/invites?inviteId=${id}`, "DELETE");
-    mutInvites();
+    await deleteInvite({ id: projectId, inviteId: id }).unwrap();
   }
 
   async function deleteProject() {
     if (!confirm(`Delete project "${project.name}" and ALL its tasks and sprints? This cannot be undone.`)) return;
-    await api(`/api/projects/${projectId}`, "DELETE");
+    await deleteProjectM(projectId).unwrap();
     refresh();
     router.push("/workspaces");
   }
@@ -125,11 +135,11 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const guests = (project.members || []) as Any[];
 
   const excludeMember = async (userId: string) => {
-    await api(`/api/projects/${projectId}/members?userId=${userId}`, "DELETE");
+    await removeMember({ id: projectId, userId }).unwrap();
     mutate();
   };
   const restoreMember = async (userId: string) => {
-    await api(`/api/projects/${projectId}/members`, "POST", { userId });
+    await restoreMemberM({ id: projectId, userId }).unwrap();
     mutate();
   };
 
@@ -249,13 +259,13 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
                 className="ml-auto rounded border border-line bg-card px-2 py-1 text-xs"
                 value={m.role}
                 disabled={!canManageMembers}
-                onChange={async (e) => { await api(`/api/projects/${projectId}/members`, "PATCH", { userId: m.user._id, role: e.target.value }); mutate(); }}
+                onChange={async (e) => { await updateMember({ id: projectId, userId: m.user._id, role: e.target.value }).unwrap(); mutate(); }}
               >
                 {ASSIGNABLE_ROLES.map((r) => <option key={r} value={r}>{ROLE_LABELS[r]}</option>)}
                 {!(ASSIGNABLE_ROLES as readonly string[]).includes(m.role) && <option value={m.role}>{m.role}</option>}
               </select>
               {canManageMembers && (
-                <button className="text-xs text-red-500 hover:underline" onClick={async () => { await api(`/api/projects/${projectId}/members?userId=${m.user._id}`, "DELETE"); mutate(); }}>
+                <button className="text-xs text-red-500 hover:underline" onClick={async () => { await removeMember({ id: projectId, userId: m.user._id }).unwrap(); mutate(); }}>
                   Remove
                 </button>
               )}

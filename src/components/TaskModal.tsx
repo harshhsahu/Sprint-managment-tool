@@ -1,12 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import useSWR, { mutate as globalMutate } from "swr";
 import {
   Copy, Trash2, Archive, Plus, Link2, CornerDownRight, CornerUpLeft, ArrowLeft,
 } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
-import { Modal, Avatar, TypeIcon, Spinner } from "@/components/ui";
+import { api, errMsg } from "@/store/api";
+import {
+  useQ, useAppDispatch, useUpdateTaskMutation, useCreateTaskMutation,
+  useAddCommentMutation, useDuplicateTaskMutation, useDeleteTaskMutation,
+  useCreateFieldOptionMutation,
+} from "@/store/hooks";
+import { Modal, Avatar, TypeIcon, Spinner, Button } from "@/components/ui";
 import { PRIORITY_META, TYPE_META, TASK_TYPES, PRIORITIES, REQUIRABLE_TASK_FIELDS } from "@/lib/constants";
 import { cn, formatDate, isOverdue, projectAssignees } from "@/lib/utils";
 
@@ -64,7 +68,15 @@ export default function TaskModal({
     setNavStack([]);
   }
 
-  const { data, mutate, isLoading } = useSWR<Any>(`/api/tasks/${currentId}`, fetcher);
+  const dispatch = useAppDispatch();
+  const [updateTask] = useUpdateTaskMutation();
+  const [createTaskM] = useCreateTaskMutation();
+  const [addCommentM] = useAddCommentMutation();
+  const [duplicateTaskM] = useDuplicateTaskMutation();
+  const [deleteTaskM] = useDeleteTaskMutation();
+  const [createFieldOptionM] = useCreateFieldOptionMutation();
+
+  const { data, mutate, isLoading } = useQ.useTask(currentId);
   const [comment, setComment] = useState("");
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [tab, setTab] = useState<"comments" | "activity">("comments");
@@ -103,7 +115,7 @@ export default function TaskModal({
     const name = newOpt.trim();
     if (!name) return;
     try {
-      const res = await api<Any>(`/api/projects/${project._id}/field-options`, "POST", { fieldId, name });
+      const res = await createFieldOptionM({ projectId: project._id, fieldId, name }).unwrap();
       setCustomFieldsState(res.customFields);
       setNewOpt("");
       setAddingOptFor(null);
@@ -111,14 +123,14 @@ export default function TaskModal({
       await patch({ customFields: { [fieldId]: [...cur, res.option.id] } });
       // Refresh the shared project cache so the new option shows up everywhere
       // (board/list filters, other open views) without a manual refresh.
-      globalMutate(`/api/projects/${project._id}`);
+      dispatch(api.util.invalidateTags([{ type: "Project", id: project._id }]));
     } catch (err) {
-      alert((err as Error).message);
+      alert(errMsg(err));
     }
   }
 
-  const { data: sprintData } = useSWR<Any>(project?._id ? `/api/sprints?project=${project._id}` : null, fetcher);
-  const { data: epicsData } = useSWR<Any>(project?._id ? `/api/tasks?project=${project._id}&type=epic&limit=50` : null, fetcher);
+  const { data: sprintData } = useQ.useSprints(project?._id ? `/api/sprints?project=${project._id}` : null);
+  const { data: epicsData } = useQ.useTasks(project?._id ? `/api/tasks?project=${project._id}&type=epic&limit=50` : null);
 
   // Open a related task (subtask/parent) inside this same modal.
   function navigate(id?: string) {
@@ -138,9 +150,9 @@ export default function TaskModal({
     setEditingDesc(false);
   }
 
+  // Optimistic via the updateTask endpoint — the field updates on screen instantly.
   async function patch(set: Any) {
-    await api(`/api/tasks/${currentId}`, "PATCH", set);
-    mutate();
+    await updateTask({ id: currentId, set }).unwrap();
     onChanged?.();
   }
 
@@ -149,9 +161,8 @@ export default function TaskModal({
     if (!comment.trim()) return;
     setBusy(true);
     try {
-      await api(`/api/tasks/${currentId}/comments`, "POST", { body: comment.trim() });
+      await addCommentM({ id: currentId, body: comment.trim() }).unwrap();
       setComment("");
-      mutate();
     } finally {
       setBusy(false);
     }
@@ -160,27 +171,27 @@ export default function TaskModal({
   async function addSubtask(e: React.FormEvent) {
     e.preventDefault();
     if (!subtaskTitle.trim()) return;
-    await api("/api/tasks", "POST", {
+    await createTaskM({
       project: project._id,
       title: subtaskTitle.trim(),
       type: "subtask",
       parentTask: currentId,
       sprint: task?.sprint?._id || null,
-    });
+    }).unwrap();
     setSubtaskTitle("");
     mutate();
     onChanged?.();
   }
 
   async function duplicate() {
-    await api(`/api/tasks/${currentId}/duplicate`, "POST");
+    await duplicateTaskM(currentId).unwrap();
     onChanged?.();
     onClose();
   }
 
   async function remove() {
     if (!confirm(`Delete ${task.key} permanently? Subtasks and comments will also be deleted.`)) return;
-    await api(`/api/tasks/${currentId}`, "DELETE");
+    await deleteTaskM(currentId).unwrap();
     onChanged?.();
     // If we drilled in from another task, return to it instead of closing.
     if (navStack.length) goBack();
@@ -281,7 +292,7 @@ export default function TaskModal({
                           className="rounded border border-line bg-card px-1 py-0.5 text-xs"
                           value={st.status}
                           disabled={!canEdit}
-                          onChange={async (e) => { await api(`/api/tasks/${st._id}`, "PATCH", { status: e.target.value }); mutate(); onChanged?.(); }}
+                          onChange={async (e) => { await updateTask({ id: st._id, set: { status: e.target.value } }).unwrap(); mutate(); onChanged?.(); }}
                         >
                           {statuses.map((s: Any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
@@ -354,7 +365,7 @@ export default function TaskModal({
                         onChange={(e) => setComment(e.target.value)}
                         onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") addComment(e); }}
                       />
-                      <button className="btn-primary mt-2 !py-1.5 text-xs" disabled={busy || !comment.trim()}>Comment</button>
+                      <Button pending={busy} className="mt-2 !py-1.5 text-xs" disabled={!comment.trim()}>Comment</Button>
                     </form>
                   )}
                 </div>

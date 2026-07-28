@@ -81,7 +81,7 @@ body {
   padding: 0.5rem 0.875rem;
   font-size: 0.875rem;
   font-weight: 500;
-  transition: background 0.15s, opacity 0.15s, border-color 0.15s;
+  transition: background 0.15s, opacity 0.15s, border-color 0.15s, transform 0.06s ease, box-shadow 0.15s, filter 0.15s;
   cursor: pointer;
   user-select: none;
 }
@@ -89,12 +89,37 @@ body {
   opacity: 0.5;
   cursor: not-allowed;
 }
+/* Tactile press feedback — the button visibly depresses the instant it's
+   clicked, so an action registers immediately even while its API call is in
+   flight. Applies to every .btn* in the app at once. */
+.btn:active:not(:disabled), .btn-primary:active:not(:disabled),
+.btn-ghost:active:not(:disabled), .btn-danger:active:not(:disabled) {
+  transform: translateY(0.5px) scale(0.97);
+  filter: brightness(0.92);
+}
+.btn:focus-visible, .btn-primary:focus-visible, .btn-ghost:focus-visible, .btn-danger:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
 .btn-primary { background: var(--accent); color: #fff; }
 .btn-primary:hover:not(:disabled) { opacity: 0.9; }
 .btn-ghost { border: 1px solid var(--border); background: var(--card); }
 .btn-ghost:hover:not(:disabled) { background: color-mix(in srgb, var(--border) 40%, transparent); }
 .btn-danger { background: #dc2626; color: #fff; }
 .btn-danger:hover:not(:disabled) { background: #b91c1c; }
+
+/* Inline spinner shown inside a Button while its mutation runs. */
+.btn-spinner {
+  width: 0.85em;
+  height: 0.85em;
+  border-radius: 9999px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  animation: btn-spin 0.6s linear infinite;
+  flex-shrink: 0;
+}
+.is-pending { position: relative; cursor: progress; }
+@keyframes btn-spin { to { transform: rotate(360deg); } }
 
 .card {
   border-radius: 0.75rem;

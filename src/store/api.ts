@@ -207,6 +207,10 @@ export const api = createApi({
       query: ({ id, userId }) => write(`/api/projects/${id}/members?userId=${userId}`, "DELETE"),
       invalidatesTags: (_r, _e, { id }) => [{ type: "Project", id }],
     }),
+    restoreProjectMember: b.mutation<Any, { id: string; userId: string }>({
+      query: ({ id, userId }) => write(`/api/projects/${id}/members`, "POST", { userId }),
+      invalidatesTags: (_r, _e, { id }) => [{ type: "Project", id }],
+    }),
     createProjectInvite: b.mutation<Any, { id: string; email: string; role: string }>({
       query: ({ id, email, role }) => write(`/api/projects/${id}/invites`, "POST", { email, role }),
       invalidatesTags: ["ProjectInvites"],

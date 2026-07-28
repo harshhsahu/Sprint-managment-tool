@@ -1,11 +1,14 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import useSWR from "swr";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Plus, Play, CheckCircle2, Trash2, Pencil, ChevronDown, ChevronRight } from "lucide-react";
-import { fetcher, api } from "@/lib/client";
-import { Spinner, Modal, Avatar, TypeIcon, PriorityBadge } from "@/components/ui";
+import { api, errMsg } from "@/store/api";
+import {
+  useQ, useAppDispatch, useReorderTasksMutation, useCreateSprintMutation,
+  useUpdateSprintMutation, useDeleteSprintMutation,
+} from "@/store/hooks";
+import { Spinner, Modal, Button, Avatar, TypeIcon, PriorityBadge } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import {
   useProject, FilterBar, BulkBar, ProjectHeader, emptyFilters, filtersToQuery,
@@ -22,18 +25,21 @@ function SprintForm({ projectId, sprint, onClose, onSaved }: { projectId: string
     capacity: sprint?.capacity || 0,
   });
   const [err, setErr] = useState("");
+  const [createSprint, { isLoading: creating }] = useCreateSprintMutation();
+  const [updateSprint, { isLoading: updating }] = useUpdateSprintMutation();
+  const saving = creating || updating;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
     try {
       if (sprint) {
-        await api(`/api/sprints/${sprint._id}`, "PATCH", { ...form, capacity: Number(form.capacity) });
+        await updateSprint({ id: sprint._id, set: { ...form, capacity: Number(form.capacity) } }).unwrap();
       } else {
-        await api("/api/sprints", "POST", { project: projectId, ...form, capacity: Number(form.capacity) });
+        await createSprint({ project: projectId, ...form, capacity: Number(form.capacity) }).unwrap();
       }
       onSaved(); onClose();
-    } catch (e) { setErr((e as Error).message); }
+    } catch (e) { setErr(errMsg(e)); }
   }
 
   return (
@@ -56,7 +62,7 @@ function SprintForm({ projectId, sprint, onClose, onSaved }: { projectId: string
           <input className="input" type="number" min={0} value={form.capacity} onChange={(e) => setForm({ ...form, capacity: Number(e.target.value) })} />
         </div>
         {err && <p className="text-sm text-red-500">{err}</p>}
-        <button className="btn-primary w-full">{sprint ? "Save changes" : "Create sprint"}</button>
+        <Button pending={saving} className="w-full">{sprint ? "Save changes" : "Create sprint"}</Button>
       </form>
     </Modal>
   );
@@ -95,9 +101,14 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
   const [completeSprint, setCompleteSprint] = useState<Any>(null);
   const [moveTo, setMoveTo] = useState("");
 
-  const { data: sprintData, mutate: mutSprints } = useSWR<Any>(`/api/sprints?project=${projectId}`, fetcher);
+  const dispatch = useAppDispatch();
+  const [reorderTasks] = useReorderTasksMutation();
+  const [updateSprintM] = useUpdateSprintMutation();
+  const [deleteSprintM] = useDeleteSprintMutation();
+
+  const { data: sprintData, mutate: mutSprints } = useQ.useSprints(`/api/sprints?project=${projectId}`);
   const tasksUrl = `/api/tasks?project=${projectId}&sort=order&limit=200${filtersToQuery(filters)}`;
-  const { data, mutate, isLoading } = useSWR<Any>(tasksUrl, fetcher, { keepPreviousData: true });
+  const { data, mutate, isLoading } = useQ.useTasks(tasksUrl);
 
   const sprints: Any[] = (sprintData?.sprints || []).filter((s: Any) => s.status === "active" || s.status === "planned");
   const tasks: Any[] = useMemo(() => data?.tasks || [], [data]);
@@ -137,34 +148,38 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
     else newOrder = (before.order + after.order) / 2;
 
     const newSprint = destination.droppableId === "backlog" ? null : destination.droppableId;
-    mutate(
-      { ...data, tasks: tasks.map((t) => (t._id === draggableId ? { ...t, sprint: newSprint ? { _id: newSprint } : null, order: newOrder } : t)) },
-      { revalidate: false }
+    // optimistic — the row jumps to its new section/position with no API wait.
+    const patch = dispatch(
+      api.util.updateQueryData("getTasks", tasksUrl, (draft: Any) => {
+        const t = draft?.tasks?.find((x: Any) => x._id === draggableId);
+        if (t) { t.sprint = newSprint ? { _id: newSprint } : null; t.order = newOrder; }
+      })
     );
-    await api("/api/tasks/reorder", "POST", {
-      project: projectId,
-      updates: [{ id: draggableId, order: newOrder, sprint: newSprint }],
-    });
-    mutate();
+    try {
+      await reorderTasks({
+        project: projectId,
+        updates: [{ id: draggableId, order: newOrder, sprint: newSprint }],
+      }).unwrap();
+    } catch {
+      patch.undo();
+    }
   }
 
   async function sprintAction(sprint: Any, action: "start" | "archive") {
+    // updateSprint invalidates Sprints + Tasks → both lists refetch automatically.
     try {
-      await api(`/api/sprints/${sprint._id}`, "PATCH", { action });
-      mutSprints(); mutate();
-    } catch (e) { alert((e as Error).message); }
+      await updateSprintM({ id: sprint._id, set: { action } }).unwrap();
+    } catch (e) { alert(errMsg(e)); }
   }
 
   async function doCompleteSprint() {
-    await api(`/api/sprints/${completeSprint._id}`, "PATCH", { action: "complete", moveIncompleteTo: moveTo || null });
+    await updateSprintM({ id: completeSprint._id, set: { action: "complete", moveIncompleteTo: moveTo || null } }).unwrap();
     setCompleteSprint(null); setMoveTo("");
-    mutSprints(); mutate();
   }
 
   async function deleteSprint(sprint: Any) {
     if (!confirm(`Delete sprint "${sprint.name}"? Its tasks move back to the backlog.`)) return;
-    await api(`/api/sprints/${sprint._id}`, "DELETE");
-    mutSprints(); mutate();
+    await deleteSprintM(sprint._id).unwrap();
   }
 
   const toggleSelect = (id: string) =>

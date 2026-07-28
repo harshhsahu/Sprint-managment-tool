@@ -3,13 +3,14 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/client";
+import { useRegisterMutation } from "@/store/hooks";
+import { errMsg } from "@/store/api";
 
 export default function RegisterPage() {
   const router = useRouter();
   const [form, setForm] = useState({ name: "", email: "", password: "", designation: "" });
   const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [register, { isLoading: busy }] = useRegisterMutation();
 
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -17,14 +18,12 @@ export default function RegisterPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    setBusy(true);
     try {
-      await api("/api/auth/register", "POST", form);
+      await register(form).unwrap();
       router.push("/dashboard");
       router.refresh();
     } catch (e) {
-      setErr((e as Error).message);
-      setBusy(false);
+      setErr(errMsg(e));
     }
   }
 

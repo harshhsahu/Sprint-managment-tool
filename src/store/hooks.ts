@@ -107,6 +107,7 @@ export const {
   useDeleteProjectMutation,
   useUpdateProjectMemberMutation,
   useRemoveProjectMemberMutation,
+  useRestoreProjectMemberMutation,
   useCreateProjectInviteMutation,
   useDeleteProjectInviteMutation,
   useUpdateUserMutation,

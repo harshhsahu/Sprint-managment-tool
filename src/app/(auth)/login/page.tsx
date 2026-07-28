@@ -3,7 +3,8 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { api } from "@/lib/client";
+import { useLoginMutation } from "@/store/hooks";
+import { errMsg } from "@/store/api";
 
 function LoginForm() {
   const router = useRouter();
@@ -11,19 +12,17 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [login, { isLoading: busy }] = useLoginMutation();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setErr("");
-    setBusy(true);
     try {
-      await api("/api/auth/login", "POST", { email, password });
+      await login({ email, password }).unwrap();
       router.push(params.get("next") || "/dashboard");
       router.refresh();
     } catch (e) {
-      setErr((e as Error).message);
-      setBusy(false);
+      setErr(errMsg(e));
     }
   }
 

@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import useSWR from "swr";
 import { Plus, X, LayoutDashboard, Trash2 } from "lucide-react";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer, BarChart, Bar, XAxis, YAxis } from "recharts";
-import { fetcher, api } from "@/lib/client";
+import { useQ, useSaveDashboardMutation, useDeleteDashboardMutation } from "@/store/hooks";
 import { Spinner, Avatar, TypeIcon, PriorityBadge, Modal, EmptyState } from "@/components/ui";
 import { PRIORITY_META } from "@/lib/constants";
 import { cn, formatDate, isOverdue } from "@/lib/utils";
@@ -183,8 +182,10 @@ function Widget({ w, data, editing, onRemove, onResize }: { w: Any; data: Any; e
 }
 
 export default function DashboardPage() {
-  const { data: dashData, mutate: mutDash } = useSWR<Any>("/api/dashboards", fetcher);
-  const { data } = useSWR<Any>("/api/dashboards/data", fetcher, { refreshInterval: 60000 });
+  const { data: dashData } = useQ.useDashboards();
+  const { data } = useQ.useDashboardData({ pollingInterval: 60000 });
+  const [saveDashboard] = useSaveDashboardMutation();
+  const [deleteDashboardM] = useDeleteDashboardMutation();
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -193,23 +194,20 @@ export default function DashboardPage() {
   const dash = dashboards.find((d) => d._id === activeId) || dashboards[0];
 
   async function saveWidgets(widgets: Any[]) {
-    await api("/api/dashboards", "POST", { _id: dash._id, name: dash.name, widgets });
-    mutDash();
+    await saveDashboard({ _id: dash._id, name: dash.name, widgets }).unwrap();
   }
 
   async function newDashboard() {
     const name = prompt("Dashboard name:");
     if (!name) return;
-    const res = await api<Any>("/api/dashboards", "POST", { name, widgets: [{ id: "w1", type: "assigned_to_me", w: 1 }] });
-    await mutDash();
+    const res = await saveDashboard({ name, widgets: [{ id: "w1", type: "assigned_to_me", w: 1 }] }).unwrap();
     setActiveId(res.dashboard._id);
   }
 
   async function deleteDashboard() {
     if (!confirm(`Delete dashboard "${dash.name}"?`)) return;
-    await api(`/api/dashboards?id=${dash._id}`, "DELETE");
+    await deleteDashboardM(dash._id).unwrap();
     setActiveId(null);
-    mutDash();
   }
 
   if (!dashData) return <Spinner label="Loading dashboard…" />;

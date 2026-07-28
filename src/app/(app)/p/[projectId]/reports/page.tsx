@@ -1,12 +1,11 @@
 "use client";
 
 import { use, useState } from "react";
-import useSWR from "swr";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from "recharts";
-import { fetcher } from "@/lib/client";
+import { useQ } from "@/store/hooks";
 import { Spinner, Avatar } from "@/components/ui";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
 import { cn } from "@/lib/utils";
@@ -35,15 +34,14 @@ export default function ReportsPage({ params }: { params: Promise<{ projectId: s
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("sprint");
   const [burndownSprint, setBurndownSprint] = useState("");
 
-  const { data: sprintList } = useSWR<Any>(`/api/sprints?project=${projectId}&archived=1`, fetcher);
-  const { data: velocity } = useSWR<Any>(tab === "sprint" ? `/api/reports/${projectId}?type=velocity` : null, fetcher);
-  const { data: burn } = useSWR<Any>(
-    tab === "sprint" ? `/api/reports/${projectId}?type=burndown${burndownSprint ? `&sprint=${burndownSprint}` : ""}` : null,
-    fetcher
+  const { data: sprintList } = useQ.useSprints(`/api/sprints?project=${projectId}&archived=1`);
+  const { data: velocity } = useQ.useReports(tab === "sprint" ? `/api/reports/${projectId}?type=velocity` : null);
+  const { data: burn } = useQ.useReports(
+    tab === "sprint" ? `/api/reports/${projectId}?type=burndown${burndownSprint ? `&sprint=${burndownSprint}` : ""}` : null
   );
-  const { data: dist } = useSWR<Any>(tab === "project" ? `/api/reports/${projectId}?type=distribution` : null, fetcher);
-  const { data: aging } = useSWR<Any>(tab === "project" ? `/api/reports/${projectId}?type=aging` : null, fetcher);
-  const { data: flow } = useSWR<Any>(tab === "flow" ? `/api/reports/${projectId}?type=flow` : null, fetcher);
+  const { data: dist } = useQ.useReports(tab === "project" ? `/api/reports/${projectId}?type=distribution` : null);
+  const { data: aging } = useQ.useReports(tab === "project" ? `/api/reports/${projectId}?type=aging` : null);
+  const { data: flow } = useQ.useReports(tab === "flow" ? `/api/reports/${projectId}?type=flow` : null);
 
   if (!project) return <Spinner label="Loading reports…" />;
 

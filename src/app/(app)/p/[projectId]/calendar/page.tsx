@@ -1,9 +1,8 @@
 "use client";
 
 import { use, useMemo, useState } from "react";
-import useSWR from "swr";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { fetcher } from "@/lib/client";
+import { useQ } from "@/store/hooks";
 import { Spinner, TypeIcon, Modal, PriorityBadge } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { useProject, FilterBar, ProjectHeader, emptyFilters, filtersToQuery, type TaskFilters, type Any } from "@/components/project/common";
@@ -21,7 +20,7 @@ export default function CalendarPage({ params }: { params: Promise<{ projectId: 
   const monthStart = month;
   const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
   const url = `/api/tasks?project=${projectId}&limit=200&dueAfter=${monthStart.toISOString()}&dueBefore=${new Date(monthEnd.getTime() + 86400000).toISOString()}${filtersToQuery(filters)}`;
-  const { data, mutate, isLoading } = useSWR<Any>(url, fetcher, { keepPreviousData: true });
+  const { data, mutate, isLoading } = useQ.useTasks(url);
   const tasks: Any[] = useMemo(() => data?.tasks || [], [data]);
 
   const weeks = useMemo(() => {
