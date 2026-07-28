@@ -35,8 +35,10 @@ function redirectToLogin() {
 
 /** Pull a human-readable message out of an RTK Query error object. */
 export function errMsg(e: unknown): string {
-  const err = e as { data?: { error?: string }; error?: string; message?: string };
-  return err?.data?.error || err?.error || err?.message || "Request failed";
+  const err = e as { data?: { error?: string; detail?: string }; error?: string; message?: string };
+  const base = err?.data?.error || err?.error || err?.message || "Request failed";
+  // Some 500s attach a `detail` for diagnosing misconfig without server-log access.
+  return err?.data?.detail ? `${base} (${err.data.detail})` : base;
 }
 
 const rawBaseQuery = fetchBaseQuery({ baseUrl: "" });
