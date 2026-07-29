@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Copy, Trash2, Archive, Plus, Link2, CornerDownRight, CornerUpLeft, ArrowLeft,
 } from "lucide-react";
@@ -29,6 +29,209 @@ function isFieldEmpty(task: Any, id: string): boolean {
     case "sprint": return !task.sprint;
     default: return false;
   }
+}
+
+const MENTION_TOKEN = /@\[([^\]]+)\]\([a-f0-9]{24}\)/g;
+
+/** Render a comment body, replacing `@[Name](userId)` tokens with a highlighted @Name. */
+function renderCommentBody(body: string): React.ReactNode[] {
+  const parts: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  MENTION_TOKEN.lastIndex = 0;
+  let k = 0;
+  while ((m = MENTION_TOKEN.exec(body))) {
+    if (m.index > last) parts.push(body.slice(last, m.index));
+    parts.push(
+      <span key={k++} className="rounded bg-accent/15 px-1 font-medium text-accent">
+        @{m[1]}
+      </span>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < body.length) parts.push(body.slice(last));
+  return parts;
+}
+
+/** Serialize a comment-composer contenteditable element back to the plain-text
+    `@[Name](userId)` format the API expects. Mention chips carry the id/name in
+    data-* attributes; everything else is its text, with block elements as newlines. */
+function serializeEditor(el: HTMLElement | null): string {
+  if (!el) return "";
+  let out = "";
+  const walk = (node: Node) => {
+    node.childNodes.forEach((child) => {
+      if (child.nodeType === Node.TEXT_NODE) {
+        out += child.textContent || "";
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        const c = child as HTMLElement;
+        if (c.dataset.mentionId) {
+          out += `@[${c.dataset.mentionName}](${c.dataset.mentionId})`;
+        } else if (c.tagName === "BR") {
+          out += "\n";
+        } else {
+          if (c.tagName === "DIV" || c.tagName === "P") out += "\n";
+          walk(c);
+        }
+      }
+    });
+  };
+  walk(el);
+  return out.replace(/ /g, " "); // normalize the nbsp we insert after chips
+}
+
+/** Comment box with @mention chips. A contentEditable surface renders each picked
+    member as a non-editable pill (so you never see the raw `@[Name](id)` token);
+    on submit it serializes back to that token for the backend to resolve. */
+function CommentComposer({
+  members,
+  busy,
+  onSubmit,
+}: {
+  members: Any[];
+  busy: boolean;
+  onSubmit: (body: string) => Promise<void>;
+}) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [mention, setMention] = useState<{ query: string } | null>(null);
+  const [sel, setSel] = useState(0);
+  const [empty, setEmpty] = useState(true);
+
+  const matches: Any[] = mention
+    ? members
+        .filter(({ user }) => {
+          const q = mention.query.toLowerCase();
+          return user?.name?.toLowerCase().includes(q) || user?.email?.toLowerCase().includes(q);
+        })
+        .slice(0, 6)
+    : [];
+  const selIdx = matches.length ? Math.min(sel, matches.length - 1) : 0;
+
+  function refreshEmpty() {
+    setEmpty(!(editorRef.current?.textContent || "").trim());
+  }
+
+  // Detect an in-progress "@query" immediately before a collapsed caret.
+  function detectMention() {
+    const s = window.getSelection();
+    if (!s || s.rangeCount === 0 || !s.isCollapsed) return setMention(null);
+    const node = s.anchorNode;
+    if (!node || node.nodeType !== Node.TEXT_NODE || !editorRef.current?.contains(node)) return setMention(null);
+    const before = (node.textContent || "").slice(0, s.anchorOffset);
+    const m = before.match(/(?:^|\s)@([\w.+-]*)$/);
+    if (m) {
+      setMention({ query: m[1] });
+      setSel(0);
+    } else {
+      setMention(null);
+    }
+  }
+
+  // Replace the "@query" before the caret with a non-editable mention chip.
+  function insertMention(u: Any) {
+    const s = window.getSelection();
+    if (!s || s.rangeCount === 0 || !editorRef.current) return;
+    const node = s.getRangeAt(0).startContainer;
+    const offset = s.getRangeAt(0).startOffset;
+    if (node.nodeType !== Node.TEXT_NODE) return;
+    const text = node.textContent || "";
+    const m = text.slice(0, offset).match(/(?:^|\s)@([\w.+-]*)$/);
+    if (!m) return;
+    const at = offset - m[1].length - 1; // index of the "@"
+
+    const parent = node.parentNode as Node;
+    const beforeNode = document.createTextNode(text.slice(0, at));
+    const chip = document.createElement("span");
+    chip.dataset.mentionId = String(u._id);
+    chip.dataset.mentionName = u.name;
+    chip.contentEditable = "false";
+    chip.className = "rounded bg-accent/15 px-1 font-medium text-accent";
+    chip.textContent = `@${u.name}`;
+    const afterNode = document.createTextNode(" " + text.slice(offset)); // nbsp so the caret lands after the chip
+
+    parent.replaceChild(afterNode, node);
+    parent.insertBefore(chip, afterNode);
+    parent.insertBefore(beforeNode, chip);
+
+    const r = document.createRange();
+    r.setStart(afterNode, 1);
+    r.collapse(true);
+    s.removeAllRanges();
+    s.addRange(r);
+
+    setMention(null);
+    editorRef.current.focus();
+    refreshEmpty();
+  }
+
+  async function submit() {
+    const body = serializeEditor(editorRef.current).trim();
+    if (!body || busy) return;
+    try {
+      await onSubmit(body);
+      if (editorRef.current) editorRef.current.innerHTML = "";
+      setMention(null);
+      refreshEmpty();
+    } catch (err) {
+      alert(errMsg(err));
+    }
+  }
+
+  return (
+    <div className="mt-3">
+      <div className="relative">
+        <div
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          role="textbox"
+          aria-multiline
+          data-placeholder="Write a comment… (type @ to mention)"
+          className="comment-editor input min-h-16 whitespace-pre-wrap break-words text-sm"
+          onInput={() => { refreshEmpty(); detectMention(); }}
+          onKeyUp={detectMention}
+          onMouseUp={detectMention}
+          onKeyDown={(e) => {
+            if (mention && matches.length) {
+              if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => (i + 1) % matches.length); return; }
+              if (e.key === "ArrowUp") { e.preventDefault(); setSel((i) => (i - 1 + matches.length) % matches.length); return; }
+              if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertMention(matches[selIdx].user); return; }
+              if (e.key === "Escape") { e.preventDefault(); setMention(null); return; }
+            }
+            if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); submit(); }
+          }}
+        />
+        {mention && matches.length > 0 && (
+          <>
+            <div className="fixed inset-0 z-30" onClick={() => setMention(null)} />
+            <div className="absolute bottom-full z-40 mb-1 max-h-56 w-64 overflow-y-auto card p-1 shadow-xl">
+              {matches.map((mm: Any, i: number) => (
+                <button
+                  type="button"
+                  key={mm.user._id}
+                  onMouseDown={(e) => { e.preventDefault(); insertMention(mm.user); }}
+                  onMouseEnter={() => setSel(i)}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm",
+                    i === selIdx ? "bg-accent/15" : "hover:bg-line/60"
+                  )}
+                >
+                  <Avatar user={mm.user} size={22} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium">{mm.user.name}</span>
+                    <span className="block truncate text-xs text-muted">{mm.user.email}</span>
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <Button type="button" pending={busy} className="mt-2 !py-1.5 text-xs" disabled={empty} onClick={submit}>
+        Comment
+      </Button>
+    </div>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -77,7 +280,6 @@ export default function TaskModal({
   const [createFieldOptionM] = useCreateFieldOptionMutation();
 
   const { data, mutate, isLoading } = useQ.useTask(currentId);
-  const [comment, setComment] = useState("");
   const [subtaskTitle, setSubtaskTitle] = useState("");
   const [tab, setTab] = useState<"comments" | "activity">("comments");
   const [editingDesc, setEditingDesc] = useState(false);
@@ -137,7 +339,6 @@ export default function TaskModal({
     if (!id || id === currentId) return;
     setNavStack((s) => [...s, currentId]);
     setCurrentId(id);
-    setComment("");
     setSubtaskTitle("");
     setEditingDesc(false);
   }
@@ -156,13 +357,12 @@ export default function TaskModal({
     onChanged?.();
   }
 
-  async function addComment(e: React.FormEvent) {
-    e.preventDefault();
-    if (!comment.trim()) return;
+  async function addComment(body: string) {
+    const text = body.trim();
+    if (!text) return;
     setBusy(true);
     try {
-      await addCommentM({ id: currentId, body: comment.trim() }).unwrap();
-      setComment("");
+      await addCommentM({ id: currentId, body: text }).unwrap();
     } finally {
       setBusy(false);
     }
@@ -351,22 +551,15 @@ export default function TaskModal({
                             <span className="font-medium">{c.author?.name}</span>{" "}
                             <span className="text-muted">{new Date(c.createdAt).toLocaleString()}</span>
                           </div>
-                          <div className="whitespace-pre-wrap text-sm">{c.body}</div>
+                          <div className="whitespace-pre-wrap text-sm">{renderCommentBody(c.body)}</div>
                         </div>
                       </div>
                     ))}
                   </div>
-                  {canComment && (
-                    <form onSubmit={addComment} className="mt-3">
-                      <textarea
-                        className="input min-h-16 text-sm"
-                        placeholder="Write a comment… (@email to mention)"
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") addComment(e); }}
-                      />
-                      <Button pending={busy} className="mt-2 !py-1.5 text-xs" disabled={!comment.trim()}>Comment</Button>
-                    </form>
+                  {canComment ? (
+                    <CommentComposer key={currentId} members={members} busy={busy} onSubmit={addComment} />
+                  ) : (
+                    <p className="mt-3 text-xs text-muted">You have view-only access here — commenting is disabled.</p>
                   )}
                 </div>
               ) : (

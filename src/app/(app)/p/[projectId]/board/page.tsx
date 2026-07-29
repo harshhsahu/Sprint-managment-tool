@@ -4,11 +4,11 @@ import { use, useMemo, useState, useEffect, useRef } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { DragDropContext, Droppable, Draggable, DropResult } from "@hello-pangea/dnd";
 import { Plus, AlertTriangle } from "lucide-react";
-import { api } from "@/store/api";
+import { api, errMsg } from "@/store/api";
 import {
   useQ, useAppDispatch, useCreateTaskMutation, useReorderTasksMutation, useUpdateTaskMutation,
 } from "@/store/hooks";
-import { Spinner } from "@/components/ui";
+import { Spinner, Button } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import {
   useProject, FilterBar, TaskCard, BulkBar, ProjectHeader, emptyFilters,
@@ -27,10 +27,16 @@ function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: st
     e.preventDefault();
     const value = title.trim();
     if (!value || busy) return;
-    const res = await createTask({ project: projectId, title: value, status, sprint: sprintId || null }).unwrap();
-    setTitle("");
-    onCreated(res?.task?._id);
-    ref.current?.focus(); // stay in "add mode" for the next task
+    try {
+      const res = await createTask({ project: projectId, title: value, status, sprint: sprintId || null }).unwrap();
+      setTitle("");
+      onCreated(res?.task?._id);
+      ref.current?.focus(); // stay in "add mode" for the next task
+    } catch (err) {
+      // Surface the error (e.g. a 403 from a role without task:create) instead of
+      // letting the rejected promise bubble up as an unhandledRejection.
+      alert(errMsg(err));
+    }
   }
   if (!open) {
     return (
@@ -51,6 +57,12 @@ function QuickCreate({ projectId, status, sprintId, onCreated }: { projectId: st
         onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) submit(e); if (e.key === "Escape") setOpen(false); }}
         onBlur={() => !title.trim() && setOpen(false)}
       />
+      <div className="mt-1.5 flex items-center gap-2">
+        <Button pending={busy} disabled={!title.trim()} className="!py-1 text-xs">Add task</Button>
+        <button type="button" className="text-xs text-muted hover:text-foreground" onClick={() => { setTitle(""); setOpen(false); }}>
+          Cancel
+        </button>
+      </div>
     </form>
   );
 }
@@ -59,7 +71,8 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
   const { projectId } = use(params);
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { project } = useProject(projectId);
+  const { project, myCapabilities } = useProject(projectId);
+  const canCreate = myCapabilities.includes("task:create");
   const [filters, setFilters] = useState<TaskFilters>(emptyFilters);
   const [swimlane, setSwimlane] = useState("none");
   const [selected, setSelected] = useState<string[]>([]);
@@ -211,12 +224,14 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
                               ))}
                               {provided.placeholder}
                             </div>
-                            <QuickCreate
-                              projectId={projectId}
-                              status={st.id}
-                              sprintId={sprintScope === "active" ? activeSprint?._id : null}
-                              onCreated={(id) => { mutate(); if (id && project.requiredFields?.length) setOpenTask(id); }}
-                            />
+                            {canCreate && (
+                              <QuickCreate
+                                projectId={projectId}
+                                status={st.id}
+                                sprintId={sprintScope === "active" ? activeSprint?._id : null}
+                                onCreated={(id) => { mutate(); if (id && project.requiredFields?.length) setOpenTask(id); }}
+                              />
+                            )}
                           </div>
                         )}
                       </Droppable>

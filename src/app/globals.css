@@ -72,6 +72,13 @@ body {
 }
 .input::placeholder { color: color-mix(in srgb, var(--muted) 60%, transparent); }
 
+/* Placeholder for the contentEditable comment composer (native inputs use ::placeholder). */
+.comment-editor:empty::before {
+  content: attr(data-placeholder);
+  color: color-mix(in srgb, var(--muted) 60%, transparent);
+  pointer-events: none;
+}
+
 .btn, .btn-primary, .btn-ghost, .btn-danger {
   display: inline-flex;
   align-items: center;

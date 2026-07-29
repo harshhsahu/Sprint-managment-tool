@@ -59,8 +59,23 @@ function ThemeToggle() {
 function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
+  const [sel, setSel] = useState(0);
   const router = useRouter();
   const { data } = useQ.useSearch(open && q.length >= 2 ? q : null);
+
+  const tasks: Any[] = data?.tasks || [];
+  const projects: Any[] = data?.projects || [];
+  // Flat, keyboard-navigable list — only the rows that lead somewhere (tasks, then
+  // projects). Kept in the same order they're rendered so a row's index lines up.
+  const navItems = [
+    ...tasks.map((t) => ({ go: () => { setOpen(false); router.push(`/p/${t.project}/board?task=${t._id}`); } })),
+    ...projects.map((p) => ({ go: () => { setOpen(false); router.push(`/p/${p._id}/board`); } })),
+  ];
+  const selIdx = navItems.length ? Math.min(sel, navItems.length - 1) : 0;
+  // Reset the highlight to the top whenever the query changes (React-recommended
+  // "adjust state during render" instead of an effect).
+  const [prevQ, setPrevQ] = useState(q);
+  if (q !== prevQ) { setPrevQ(q); setSel(0); }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -89,16 +104,26 @@ function GlobalSearch() {
           placeholder="Search tasks, projects, sprints, people…"
           value={q}
           onChange={(e) => setQ(e.target.value)}
+          onKeyDown={(e) => {
+            if (!navItems.length) return;
+            if (e.key === "ArrowDown") { e.preventDefault(); setSel((i) => Math.min(i + 1, navItems.length - 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setSel((i) => Math.max(i - 1, 0)); }
+            else if (e.key === "Enter") { e.preventDefault(); navItems[selIdx]?.go(); }
+          }}
           autoFocus
         />
         <div className="max-h-96 space-y-3 overflow-y-auto">
-          {data?.tasks?.length > 0 && (
+          {tasks.length > 0 && (
             <div>
               <div className="mb-1 text-xs font-semibold uppercase text-muted">Tasks</div>
-              {data.tasks.map((t: Any) => (
+              {tasks.map((t: Any, i: number) => (
                 <button
                   key={t._id}
-                  className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-line/40"
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
+                    i === selIdx ? "bg-line/60" : "hover:bg-line/40"
+                  )}
+                  onMouseEnter={() => setSel(i)}
                   onClick={() => { setOpen(false); router.push(`/p/${t.project}/board?task=${t._id}`); }}
                 >
                   <span className="font-mono text-xs text-muted">{t.key}</span>
@@ -108,11 +133,16 @@ function GlobalSearch() {
               ))}
             </div>
           )}
-          {data?.projects?.length > 0 && (
+          {projects.length > 0 && (
             <div>
               <div className="mb-1 text-xs font-semibold uppercase text-muted">Projects</div>
-              {data.projects.map((p: Any) => (
-                <button key={p._id} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-line/40"
+              {projects.map((p: Any, j: number) => (
+                <button key={p._id}
+                  className={cn(
+                    "flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm",
+                    tasks.length + j === selIdx ? "bg-line/60" : "hover:bg-line/40"
+                  )}
+                  onMouseEnter={() => setSel(tasks.length + j)}
                   onClick={() => { setOpen(false); router.push(`/p/${p._id}/board`); }}>
                   <FolderKanban size={14} className="text-muted" /> {p.name}
                   <span className="font-mono text-xs text-muted">{p.key}</span>

@@ -66,7 +66,7 @@ export default function WorkspacesPage() {
     try {
       const res = await inviteMemberM({ id: manageWs._id, body: invite }).unwrap();
       setManageWs(res.workspace);
-      setInvite({ email: "", role: "member" });
+      setInvite({ email: "", role: "editor" });
     } catch (e) { setErr(errMsg(e)); }
   }
 

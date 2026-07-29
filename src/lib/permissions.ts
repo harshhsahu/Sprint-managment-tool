@@ -2,11 +2,6 @@ import { Project, Workspace } from "@/models";
 import { ROLE_CAPS, isSuperAdminEmail, type Capability, type Role } from "./constants";
 import { resolveStatus } from "./plans";
 
-/** The only capability an expired-plan workspace keeps: read. Everything else is
-    stripped, putting the whole workspace into automatic read-only mode.
-    (Billing gate — see getCapabilities.) */
-const READ_ONLY_CAPS: Capability[] = ["project:view"];
-
 /* Role-based access control.
 
    One role set — owner > admin > editor > viewer — is used at both the workspace
@@ -59,7 +54,12 @@ export async function getProjectRole(user: UserDoc, projectId: string): Promise<
   const guest = project.members.find((m: any) => String(m.user) === String(user._id));
   const guestRole = (guest?.role as Role) || null;
 
-  if (wsRole && guestRole) return RANK[wsRole] >= RANK[guestRole] ? wsRole : guestRole;
+  // Compare by rank, treating any unrecognized role name as rank 0 so a KNOWN
+  // workspace role (e.g. owner) is never silently shadowed by an unknown guest
+  // role. (Legacy data carries non-canonical roles like "project_admin".)
+  const rankOf = (r: Role | null): number =>
+    (RANK as Record<string, number | undefined>)[r ?? ""] ?? 0;
+  if (wsRole && guestRole) return rankOf(wsRole) >= rankOf(guestRole) ? wsRole : guestRole;
   return wsRole || guestRole;
 }
 
@@ -73,16 +73,19 @@ export async function isWorkspaceExpired(workspaceId: string): Promise<boolean> 
   return resolveStatus(ws) === "expired";
 }
 
-/** All capabilities a user has on a project. When the owning workspace's plan has
-    expired, capabilities collapse to read-only regardless of the user's role. */
+/** All capabilities a user has on a project — purely role-based.
+
+    NOTE: v1 billing is DISPLAY-ONLY (see plans.ts). Plan tier and trial/plan
+    expiry are surfaced in the UI (badges, days-remaining) but must NOT hard-block
+    actions — that lock is deferred to v2. So capabilities depend only on the
+    user's role, never on subscription status. Previously an "expired" workspace
+    (e.g. a paid plan whose subscriptionStatus was still "trialing" with a lapsed
+    trial date) collapsed every role to read-only, which silently stripped
+    task:comment/edit/etc. even from admins. isWorkspaceExpired remains (used for
+    display + the v2 enforcement that will re-introduce a read-only cap set). */
 export async function getCapabilities(user: UserDoc, projectId: string): Promise<Set<Capability>> {
   const role = await getProjectRole(user, projectId);
   if (!role) return new Set();
-
-  const project = await Project.findById(projectId).select("workspace");
-  if (project && (await isWorkspaceExpired(String(project.workspace)))) {
-    return new Set(ROLE_CAPS[role].filter((c) => READ_ONLY_CAPS.includes(c)));
-  }
   return new Set(ROLE_CAPS[role]);
 }
 
