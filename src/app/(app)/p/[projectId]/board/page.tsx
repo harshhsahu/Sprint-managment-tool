@@ -217,6 +217,7 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
                                         onClick={() => setOpenTask(t._id)}
                                         selected={selected.includes(t._id)}
                                         onToggleSelect={() => toggleSelect(t._id)}
+                                        types={project.taskTypes}
                                       />
                                     </div>
                                   )}

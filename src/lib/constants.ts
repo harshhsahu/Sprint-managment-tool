@@ -1,5 +1,57 @@
-export const TASK_TYPES = ["epic", "story", "task", "bug", "spike", "improvement", "subtask"] as const;
-export type TaskType = (typeof TASK_TYPES)[number];
+/* ---------------------------- Task types ----------------------------
+   Task types are now configurable PER PROJECT (like statuses). A project
+   stores its own list of TaskTypeConfig; the constants below are only the
+   defaults seeded into new projects and the fallback used when a project
+   hasn't been migrated yet or a view spans multiple projects. */
+export type TaskTypeConfig = {
+  id: string;
+  name: string;
+  color: string;
+  icon: string; // a lucide-react icon name (see CURATED_TYPE_ICONS)
+  system?: boolean; // system types carry hierarchy semantics — cannot be deleted
+};
+
+/* `epic` and `subtask` are structural, not cosmetic: an epic is the container
+   other tasks link to, and subtasks are the children created under a task. They
+   are always present and can be recolored/re-iconed but never removed. */
+export const SYSTEM_TASK_TYPE_IDS = ["epic", "subtask"] as const;
+
+/** Default task types seeded into every new project. */
+export const DEFAULT_TASK_TYPES: TaskTypeConfig[] = [
+  { id: "epic", name: "Epic", color: "#8b5cf6", icon: "Zap", system: true },
+  { id: "story", name: "Story", color: "#22c55e", icon: "Bookmark" },
+  { id: "task", name: "Task", color: "#3b82f6", icon: "CheckSquare" },
+  { id: "bug", name: "Bug", color: "#ef4444", icon: "Bug" },
+  { id: "spike", name: "Spike", color: "#f59e0b", icon: "Search" },
+  { id: "improvement", name: "Improvement", color: "#06b6d4", icon: "TrendingUp" },
+  { id: "subtask", name: "Subtask", color: "#64748b", icon: "GitBranch", system: true },
+];
+
+/* lucide-react icon names offered in the project's task-type icon picker. Kept
+   as a curated set (not the full ~1000-icon library) so the bundle stays small
+   and the picker stays usable. The matching components are registered in
+   `src/components/ui.tsx` (TYPE_ICON_REGISTRY) — keep the two in sync. */
+export const CURATED_TYPE_ICONS = [
+  "CheckSquare", "Bug", "Bookmark", "Zap", "Search", "TrendingUp", "GitBranch",
+  "Flag", "Star", "Layers", "Box", "Package", "Rocket", "Target", "Lightbulb",
+  "AlertTriangle", "Wrench", "Sparkles", "FileText", "ClipboardList", "FlaskConical",
+  "Milestone", "GitPullRequest", "ShieldAlert", "Gauge", "Puzzle", "Palette",
+  "Database", "Server", "Globe", "Bell", "Heart", "Code", "Feather", "Compass", "Hammer",
+] as const;
+
+const NEUTRAL_TASK_TYPE: TaskTypeConfig = { id: "task", name: "Task", color: "#64748b", icon: "CheckSquare" };
+
+/** Resolve a task's `type` id to its display config. Prefers the project's own
+    configured types, falls back to the built-in defaults, then to a neutral
+    badge — so a legacy or unknown id never crashes a view. */
+export function resolveTaskType(typeId: string, types?: TaskTypeConfig[] | null): TaskTypeConfig {
+  const list = types && types.length ? types : DEFAULT_TASK_TYPES;
+  return (
+    list.find((t) => t.id === typeId) ||
+    DEFAULT_TASK_TYPES.find((t) => t.id === typeId) ||
+    { ...NEUTRAL_TASK_TYPE, id: typeId, name: typeId }
+  );
+}
 
 export const PRIORITIES = ["highest", "high", "medium", "low", "lowest"] as const;
 export type Priority = (typeof PRIORITIES)[number];
@@ -10,16 +62,6 @@ export const PRIORITY_META: Record<Priority, { label: string; color: string }> =
   medium: { label: "Medium", color: "#eab308" },
   low: { label: "Low", color: "#22c55e" },
   lowest: { label: "Lowest", color: "#3b82f6" },
-};
-
-export const TYPE_META: Record<TaskType, { label: string; color: string; icon: string }> = {
-  epic: { label: "Epic", color: "#8b5cf6", icon: "Zap" },
-  story: { label: "Story", color: "#22c55e", icon: "Bookmark" },
-  task: { label: "Task", color: "#3b82f6", icon: "CheckSquare" },
-  bug: { label: "Bug", color: "#ef4444", icon: "Bug" },
-  spike: { label: "Spike", color: "#f59e0b", icon: "Search" },
-  improvement: { label: "Improvement", color: "#06b6d4", icon: "TrendingUp" },
-  subtask: { label: "Subtask", color: "#64748b", icon: "GitBranch" },
 };
 
 /* One unified role set used at BOTH the workspace and project level.

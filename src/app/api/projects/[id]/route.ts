@@ -2,6 +2,7 @@ import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Project, Task, Sprint } from "@/models";
 import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
+import { SYSTEM_TASK_TYPE_IDS, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -37,11 +38,20 @@ const statusSchema = z.object({
   wipLimit: z.number().min(0).max(100),
 });
 
+const taskTypeSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1).max(40),
+  color: z.string().max(20),
+  icon: z.string().max(40),
+  system: z.boolean().optional(),
+});
+
 const patchSchema = z.object({
   name: z.string().min(2).max(80).optional(),
   description: z.string().max(2000).optional(),
   lead: z.string().optional(),
   statuses: z.array(statusSchema).min(1).optional(),
+  taskTypes: z.array(taskTypeSchema).min(1).max(30).optional(),
   hiddenFields: z.array(z.string()).max(30).optional(),
   requiredFields: z.array(z.string()).max(30).optional(),
   customFields: z
@@ -70,6 +80,28 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
+
+  // Task types: enforce system types stay, unique ids, and block removing a type
+  // that tasks still use (no silent data change — surface the count instead).
+  if (data.taskTypes) {
+    const ids = data.taskTypes.map((t) => t.id);
+    if (new Set(ids).size !== ids.length) return error("Task type ids must be unique", 422);
+    for (const sysId of SYSTEM_TASK_TYPE_IDS) {
+      if (!ids.includes(sysId)) return error(`The "${sysId}" type is required and cannot be removed`, 422);
+    }
+    const current = await Project.findById(id).select("taskTypes");
+    if (!current) return error("Project not found", 404);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const prevTypes: any[] = current.taskTypes?.length ? current.taskTypes : DEFAULT_TASK_TYPES;
+    const removed = prevTypes.map((t) => t.id).filter((tid) => !ids.includes(tid));
+    for (const tid of removed) {
+      const count = await Task.countDocuments({ project: id, type: tid });
+      if (count > 0) {
+        const label = prevTypes.find((t) => t.id === tid)?.name || tid;
+        return error(`Can't remove the "${label}" type — ${count} task(s) still use it. Reassign them first.`, 422);
+      }
+    }
+  }
 
   // if statuses changed, remap tasks whose status was removed to the first status
   if (data.statuses) {

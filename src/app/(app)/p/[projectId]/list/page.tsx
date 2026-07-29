@@ -160,7 +160,7 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
                     </td>
                     {show("key") && (
                       <td className="px-3 py-1.5 font-mono text-xs text-muted whitespace-nowrap">
-                        <span className="flex items-center gap-1.5"><TypeIcon type={t.type} size={11} />{t.key}</span>
+                        <span className="flex items-center gap-1.5"><TypeIcon type={t.type} types={project?.taskTypes} size={11} />{t.key}</span>
                       </td>
                     )}
                     {show("title") && <td className="px-3 py-1.5 max-w-md truncate">{t.title}</td>}

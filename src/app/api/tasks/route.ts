@@ -2,7 +2,7 @@ import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Task, Project, Workspace } from "@/models";
 import { getProjectRole, can } from "@/lib/permissions";
-import { TASK_TYPES, PRIORITIES } from "@/lib/constants";
+import { PRIORITIES, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 /** List tasks with rich filtering, sorting and pagination.
     ?project= &sprint=(id|none|active) &status= &priority= &assignee=(id|me|none) &reporter=
@@ -113,7 +113,7 @@ const createSchema = z.object({
   project: z.string(),
   title: z.string().min(1).max(300),
   description: z.string().max(50000).optional(),
-  type: z.enum(TASK_TYPES).default("task"),
+  type: z.string().default("task"),
   status: z.string().optional(),
   priority: z.enum(PRIORITIES).default("medium"),
   assignee: z.string().nullable().optional(),
@@ -139,6 +139,14 @@ export async function POST(req: Request) {
     { new: true }
   );
   if (!project) return error("Project not found", 404);
+
+  // Validate the type against the project's configured types (fall back to the
+  // defaults for projects not yet migrated).
+  const projectTypes = project.taskTypes?.length ? project.taskTypes : DEFAULT_TASK_TYPES;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  if (!projectTypes.some((t: any) => t.id === data.type)) {
+    return error(`Invalid task type "${data.type}" for this project`, 422);
+  }
 
   const defaultStatus = data.status || project.statuses[0]?.id || "backlog";
   const maxOrder = await Task.findOne({ project: data.project, status: defaultStatus })

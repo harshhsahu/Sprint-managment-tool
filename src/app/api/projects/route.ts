@@ -2,7 +2,7 @@ import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Project, Workspace } from "@/models";
 import { getWorkspaceRole, isWorkspaceManager } from "@/lib/permissions";
-import { DEFAULT_STATUSES } from "@/lib/constants";
+import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 export async function GET(req: Request) {
   const { user, res } = await withAuth();
@@ -79,6 +79,7 @@ export async function POST(req: Request) {
     lead: user!._id,
     members: [],
     statuses: DEFAULT_STATUSES,
+    taskTypes: DEFAULT_TASK_TYPES,
     // Starter "Labels" field — labels are now a user-defined multiselect custom field.
     customFields: [
       {

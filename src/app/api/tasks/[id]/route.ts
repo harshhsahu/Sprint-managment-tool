@@ -2,7 +2,7 @@ import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Task, Comment, Activity, Project } from "@/models";
 import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
-import { TASK_TYPES, PRIORITIES } from "@/lib/constants";
+import { PRIORITIES, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -37,7 +37,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
 const patchSchema = z.object({
   title: z.string().min(1).max(300).optional(),
   description: z.string().max(50000).optional(),
-  type: z.enum(TASK_TYPES).optional(),
+  type: z.string().optional(),
   status: z.string().optional(),
   priority: z.enum(PRIORITIES).optional(),
   assignee: z.string().nullable().optional(),
@@ -66,7 +66,13 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (bodyErr) return bodyErr;
 
   const changes: string[] = [];
-  const project = await Project.findById(task.project).select("statuses key name");
+  const project = await Project.findById(task.project).select("statuses key name taskTypes");
+
+  if (data.type !== undefined && data.type !== task.type) {
+    const projectTypes = project?.taskTypes?.length ? project.taskTypes : DEFAULT_TASK_TYPES;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    if (!projectTypes.some((t: any) => t.id === data.type)) return error("Invalid task type for this project", 422);
+  }
 
   if (data.status !== undefined && data.status !== task.status) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

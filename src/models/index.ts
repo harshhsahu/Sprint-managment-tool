@@ -72,6 +72,20 @@ const StatusSchema = new Schema(
   { _id: false }
 );
 
+// A project-defined task type (epic/story/bug/…). Configurable per project, with
+// its own colour + lucide icon name. `system` types (epic, subtask) carry
+// hierarchy semantics and cannot be deleted — see src/lib/constants.ts.
+const TaskTypeSchema = new Schema(
+  {
+    id: { type: String, required: true },
+    name: { type: String, required: true },
+    color: { type: String, default: "#3b82f6" },
+    icon: { type: String, default: "CheckSquare" },
+    system: { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
 // A selectable option for a "multiselect" custom field (carries its own colour,
 // so its chips render exactly like the old built-in labels did).
 const CustomFieldOptionSchema = new Schema(
@@ -107,6 +121,9 @@ const ProjectSchema = new Schema(
     // their workspace role everywhere else but lose all access here (revertable).
     excludedMembers: [{ type: Types.ObjectId, ref: "User" }],
     statuses: [StatusSchema],
+    // Per-project task types (epic/story/bug/…). Seeded from DEFAULT_TASK_TYPES on
+    // creation; back-filled for existing projects by migration.
+    taskTypes: [TaskTypeSchema],
     // Task-field configuration: hide built-in optional fields + define custom ones.
     hiddenFields: [{ type: String }],
     // Fields that new tasks are prompted to fill (soft-required — never block saving).
@@ -144,11 +161,9 @@ const TaskSchema = new Schema(
     key: { type: String, required: true, index: true }, // e.g. PROJ-42
     title: { type: String, required: true, trim: true },
     description: { type: String, default: "" }, // rich text (HTML)
-    type: {
-      type: String,
-      enum: ["epic", "story", "task", "bug", "spike", "improvement", "subtask"],
-      default: "task",
-    },
+    // A task type id defined by the project's `taskTypes`. Not a fixed enum — types
+    // are configurable per project; validity is enforced at the API layer.
+    type: { type: String, default: "task" },
     status: { type: String, default: "backlog", index: true },
     priority: {
       type: String,
@@ -280,16 +295,39 @@ const DashboardSchema = new Schema(
   { timestamps: true }
 );
 
-export const User = models.User || model("User", UserSchema);
-export const Workspace = models.Workspace || model("Workspace", WorkspaceSchema);
-export const Project = models.Project || model("Project", ProjectSchema);
-export const Sprint = models.Sprint || model("Sprint", SprintSchema);
-export const Task = models.Task || model("Task", TaskSchema);
-export const Comment = models.Comment || model("Comment", CommentSchema);
-export const Activity = models.Activity || model("Activity", ActivitySchema);
-export const Notification = models.Notification || model("Notification", NotificationSchema);
-export const SavedFilter = models.SavedFilter || model("SavedFilter", SavedFilterSchema);
-export const Invite = models.Invite || model("Invite", InviteSchema);
-export const Dashboard = models.Dashboard || model("Dashboard", DashboardSchema);
+/**
+ * Register (or reuse) a Mongoose model.
+ *
+ * Mongoose caches compiled models on its module-global `mongoose.models`
+ * registry. The classic `models.X || model("X", schema)` pattern reuses that
+ * cache — which is required in production (and to avoid OverwriteModelError),
+ * but in development it means schema edits DON'T take effect on hot-reload: the
+ * stale model keeps its old paths, and strict mode then SILENTLY STRIPS any new
+ * field from writes (findByIdAndUpdate `$set`), so updates appear to "succeed"
+ * while the new field never persists.
+ *
+ * So in development we drop the cached model and recompile it, letting Fast
+ * Refresh pick up `src/models` changes without a manual server restart. In
+ * production we keep the cache.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function defineModel<T = any>(name: string, schema: Schema): mongoose.Model<T> {
+  if (process.env.NODE_ENV !== "production" && models[name]) {
+    mongoose.deleteModel(name);
+  }
+  return (models[name] as mongoose.Model<T>) || model<T>(name, schema);
+}
+
+export const User = defineModel("User", UserSchema);
+export const Workspace = defineModel("Workspace", WorkspaceSchema);
+export const Project = defineModel("Project", ProjectSchema);
+export const Sprint = defineModel("Sprint", SprintSchema);
+export const Task = defineModel("Task", TaskSchema);
+export const Comment = defineModel("Comment", CommentSchema);
+export const Activity = defineModel("Activity", ActivitySchema);
+export const Notification = defineModel("Notification", NotificationSchema);
+export const SavedFilter = defineModel("SavedFilter", SavedFilterSchema);
+export const Invite = defineModel("Invite", InviteSchema);
+export const Dashboard = defineModel("Dashboard", DashboardSchema);
 
 export { mongoose };

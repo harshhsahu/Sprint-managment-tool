@@ -5,7 +5,7 @@ import { Filter, X, Save } from "lucide-react";
 import { useQ, useSaveFilterMutation, useBulkTasksMutation } from "@/store/hooks";
 import { errMsg } from "@/store/api";
 import { Avatar, TypeIcon, PriorityBadge } from "@/components/ui";
-import { PRIORITIES, PRIORITY_META, TASK_TYPES, TYPE_META } from "@/lib/constants";
+import { PRIORITIES, PRIORITY_META, DEFAULT_TASK_TYPES, resolveTaskType } from "@/lib/constants";
 import { cn, formatDate, isOverdue, projectAssignees } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -98,6 +98,7 @@ export function FilterBar({
   extra?: React.ReactNode;
 }) {
   const members = projectAssignees(project);
+  const projectTypes: Any[] = project?.taskTypes?.length ? project.taskTypes : DEFAULT_TASK_TYPES;
   const multiselectFields = (project?.customFields || []).filter((f: Any) => f.type === "multiselect");
   const hasFilters =
     filters.q || filters.assignee.length || filters.priority.length || filters.type.length || filters.status.length ||
@@ -135,7 +136,7 @@ export function FilterBar({
       />
       <MultiSelect
         label="Type"
-        options={TASK_TYPES.map((t) => ({ value: t, label: TYPE_META[t].label }))}
+        options={projectTypes.map((t: Any) => ({ value: t.id, label: t.name }))}
         value={filters.type}
         onChange={(type) => setFilters({ ...filters, type })}
       />
@@ -176,7 +177,7 @@ export function FilterBar({
 
 /* -------------------------------- TaskCard ----------------------------- */
 export function TaskCard({
-  task, onClick, selected, onToggleSelect, showStatus, statuses,
+  task, onClick, selected, onToggleSelect, showStatus, statuses, types,
 }: {
   task: Any;
   onClick: () => void;
@@ -184,6 +185,7 @@ export function TaskCard({
   onToggleSelect?: (e: React.MouseEvent) => void;
   showStatus?: boolean;
   statuses?: Any[];
+  types?: Any[];
 }) {
   const status = statuses?.find((s) => s.id === task.status);
   return (
@@ -195,7 +197,7 @@ export function TaskCard({
       )}
     >
       <div className="mb-1.5 flex items-start gap-1.5">
-        <TypeIcon type={task.type} size={13} />
+        <TypeIcon type={task.type} types={types} size={13} />
         <span className="min-w-0 flex-1 text-sm leading-snug">{task.title}</span>
         {onToggleSelect && (
           <input
@@ -306,7 +308,7 @@ export function useGroups(tasks: Any[], groupBy: string, project: Any) {
       else if (groupBy === "priority") push(t.priority, PRIORITY_META[t.priority as keyof typeof PRIORITY_META]?.label || t.priority, t);
       else if (groupBy === "sprint") push(t.sprint?._id || "none", t.sprint?.name || "No sprint", t);
       else if (groupBy === "epic") push(t.epic?._id || "none", t.epic ? `${t.epic.key} ${t.epic.title}` : "No epic", t);
-      else if (groupBy === "type") push(t.type, TYPE_META[t.type as keyof typeof TYPE_META]?.label || t.type, t);
+      else if (groupBy === "type") push(t.type, resolveTaskType(t.type, project?.taskTypes).name, t);
       else if (groupBy === "status") {
         const s = (project?.statuses || []).find((x: Any) => x.id === t.status);
         push(t.status, s?.name || t.status, t);

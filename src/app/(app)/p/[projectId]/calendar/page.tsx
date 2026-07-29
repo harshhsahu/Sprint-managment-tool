@@ -85,7 +85,7 @@ export default function CalendarPage({ params }: { params: Promise<{ projectId: 
                           style={{ borderLeftColor: PRIORITY_META[t.priority as keyof typeof PRIORITY_META]?.color, borderLeftWidth: 2 }}
                           title={`${t.key} ${t.title}`}
                         >
-                          <TypeIcon type={t.type} size={10} />
+                          <TypeIcon type={t.type} types={project?.taskTypes} size={10} />
                           <span className="truncate">{t.title}</span>
                         </button>
                       ))}
@@ -116,7 +116,7 @@ export default function CalendarPage({ params }: { params: Promise<{ projectId: 
                   onClick={() => { setOpenTask(t._id); setDayModal(null); }}
                   className="flex w-full items-center gap-2 rounded-lg border border-line px-2 py-1.5 text-left text-sm hover:border-accent"
                 >
-                  <TypeIcon type={t.type} size={12} />
+                  <TypeIcon type={t.type} types={project?.taskTypes} size={12} />
                   <span className="font-mono text-xs text-muted">{t.key}</span>
                   <span className="min-w-0 flex-1 truncate">{t.title}</span>
                   {st && <span className="chip !text-[10px]" style={{ background: `${st.color}22`, color: st.color }}>{st.name}</span>}

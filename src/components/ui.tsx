@@ -3,8 +3,14 @@
 import { ButtonHTMLAttributes, ReactNode, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { cn, initials } from "@/lib/utils";
-import { PRIORITY_META, TYPE_META, type Priority, type TaskType } from "@/lib/constants";
-import { Zap, Bookmark, CheckSquare, Bug, Search, TrendingUp, GitBranch } from "lucide-react";
+import { PRIORITY_META, resolveTaskType, type Priority, type TaskTypeConfig } from "@/lib/constants";
+import {
+  Zap, Bookmark, CheckSquare, Bug, Search, TrendingUp, GitBranch,
+  Flag, Star, Layers, Box, Package, Rocket, Target, Lightbulb, AlertTriangle,
+  Wrench, Sparkles, FileText, ClipboardList, FlaskConical, Milestone, GitPullRequest,
+  ShieldAlert, Gauge, Puzzle, Palette, Database, Server, Globe, Bell, Heart, Code,
+  Feather, Compass, Hammer, type LucideIcon,
+} from "lucide-react";
 
 /* ------------------------------ Avatar ------------------------------ */
 export function Avatar({
@@ -37,18 +43,34 @@ export function Avatar({
 }
 
 /* --------------------------- Type & priority ------------------------ */
-const TYPE_ICONS = { Zap, Bookmark, CheckSquare, Bug, Search, TrendingUp, GitBranch };
+/* Curated lucide icons offered as task-type icons. The keys must match the
+   names in CURATED_TYPE_ICONS (src/lib/constants.ts). */
+export const TYPE_ICON_REGISTRY: Record<string, LucideIcon> = {
+  CheckSquare, Bug, Bookmark, Zap, Search, TrendingUp, GitBranch,
+  Flag, Star, Layers, Box, Package, Rocket, Target, Lightbulb, AlertTriangle,
+  Wrench, Sparkles, FileText, ClipboardList, FlaskConical, Milestone, GitPullRequest,
+  ShieldAlert, Gauge, Puzzle, Palette, Database, Server, Globe, Bell, Heart, Code,
+  Feather, Compass, Hammer,
+};
 
-export function TypeIcon({ type, size = 14 }: { type: TaskType; size?: number }) {
-  const meta = TYPE_META[type] || TYPE_META.task;
-  const Icon = TYPE_ICONS[meta.icon as keyof typeof TYPE_ICONS] || CheckSquare;
+/** Render a curated lucide icon by name (falls back to CheckSquare). */
+export function TypeIconGlyph({ icon, size = 14, color }: { icon: string; size?: number; color?: string }) {
+  const Icon = TYPE_ICON_REGISTRY[icon] || CheckSquare;
+  return <Icon size={size} color={color} strokeWidth={2.5} />;
+}
+
+/** The colored rounded-square task-type badge. Pass the project's `types` so the
+    label/color/icon reflect its configuration; omit it (cross-project views) to
+    fall back to the built-in defaults. */
+export function TypeIcon({ type, types, size = 14 }: { type: string; types?: TaskTypeConfig[] | null; size?: number }) {
+  const meta = resolveTaskType(type, types);
   return (
     <span
       className="inline-flex items-center justify-center rounded shrink-0"
       style={{ width: size + 6, height: size + 6, background: meta.color }}
-      title={meta.label}
+      title={meta.name}
     >
-      <Icon size={size - 2} color="white" strokeWidth={2.5} />
+      <TypeIconGlyph icon={meta.icon} size={size - 2} color="white" />
     </span>
   );
 }

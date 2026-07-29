@@ -68,7 +68,7 @@ function SprintForm({ projectId, sprint, onClose, onSaved }: { projectId: string
   );
 }
 
-function Row({ task, onClick, selected, toggle, statuses }: { task: Any; onClick: () => void; selected: boolean; toggle: () => void; statuses: Any[] }) {
+function Row({ task, onClick, selected, toggle, statuses, types }: { task: Any; onClick: () => void; selected: boolean; toggle: () => void; statuses: Any[]; types?: Any[] }) {
   const st = statuses.find((s: Any) => s.id === task.status);
   return (
     <div
@@ -79,7 +79,7 @@ function Row({ task, onClick, selected, toggle, statuses }: { task: Any; onClick
       )}
     >
       <input type="checkbox" checked={selected} onChange={() => {}} onClick={(e) => { e.stopPropagation(); toggle(); }} />
-      <TypeIcon type={task.type} size={12} />
+      <TypeIcon type={task.type} types={types} size={12} />
       <span className="font-mono text-xs text-muted shrink-0">{task.key}</span>
       <span className="min-w-0 flex-1 truncate">{task.title}</span>
       {st && <span className="chip !text-[10px] shrink-0" style={{ background: `${st.color}22`, color: st.color }}>{st.name}</span>}
@@ -251,7 +251,7 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
                             <Draggable draggableId={t._id} index={i} key={t._id}>
                               {(dp, ds) => (
                                 <div ref={dp.innerRef} {...dp.draggableProps} {...dp.dragHandleProps} className={cn(ds.isDragging && "opacity-90 shadow-lg")}>
-                                  <Row task={t} onClick={() => setOpenTask(t._id)} selected={selected.includes(t._id)} toggle={() => toggleSelect(t._id)} statuses={statuses} />
+                                  <Row task={t} onClick={() => setOpenTask(t._id)} selected={selected.includes(t._id)} toggle={() => toggleSelect(t._id)} statuses={statuses} types={project?.taskTypes} />
                                 </div>
                               )}
                             </Draggable>

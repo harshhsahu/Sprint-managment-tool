@@ -5,7 +5,7 @@ import { useQ } from "@/store/hooks";
 import { Spinner, TypeIcon, EmptyState } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
-import { TYPE_META } from "@/lib/constants";
+import { resolveTaskType } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { GanttChartSquare } from "lucide-react";
 
@@ -99,11 +99,11 @@ export default function TimelinePage({ params }: { params: Promise<{ projectId: 
               <div key={t._id}>
                 <div className="group relative h-8">
                   <div className="absolute inset-y-1 rounded-md opacity-90 transition group-hover:opacity-100 cursor-pointer flex items-center gap-1 px-2 overflow-hidden"
-                    style={{ ...barFor(t), background: `${TYPE_META[t.type as keyof typeof TYPE_META]?.color}55`, border: `1px solid ${TYPE_META[t.type as keyof typeof TYPE_META]?.color}` }}
+                    style={{ ...barFor(t), background: `${resolveTaskType(t.type, project?.taskTypes).color}55`, border: `1px solid ${resolveTaskType(t.type, project?.taskTypes).color}` }}
                     onClick={() => setOpenTask(t._id)}
                     title={`${t.key} ${t.title}`}
                   >
-                    <TypeIcon type={t.type} size={10} />
+                    <TypeIcon type={t.type} types={project?.taskTypes} size={10} />
                     <span className="truncate text-[11px] font-medium">{t.key} {t.title}</span>
                   </div>
                 </div>

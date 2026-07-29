@@ -11,7 +11,7 @@ import {
   useCreateFieldOptionMutation,
 } from "@/store/hooks";
 import { Modal, Avatar, TypeIcon, Spinner, Button } from "@/components/ui";
-import { PRIORITY_META, TYPE_META, TASK_TYPES, PRIORITIES, REQUIRABLE_TASK_FIELDS } from "@/lib/constants";
+import { PRIORITY_META, PRIORITIES, REQUIRABLE_TASK_FIELDS, DEFAULT_TASK_TYPES } from "@/lib/constants";
 import { cn, formatDate, isOverdue, projectAssignees } from "@/lib/utils";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -305,6 +305,7 @@ export default function TaskModal({
   const canComment = has("task:comment");
   const members: Any[] = projectAssignees(project);
   const statuses: Any[] = project?.statuses || [];
+  const taskTypes: Any[] = project?.taskTypes?.length ? project.taskTypes : DEFAULT_TASK_TYPES;
   const hiddenFields: string[] = project?.hiddenFields || [];
   const showField = (id: string) => !hiddenFields.includes(id);
   const requiredFields: string[] = project?.requiredFields || [];
@@ -407,7 +408,7 @@ export default function TaskModal({
               <ArrowLeft size={14} />
             </button>
           )}
-          <TypeIcon type={task.type} />
+          <TypeIcon type={task.type} types={taskTypes} />
           <span className="font-mono text-xs text-muted">{task.key}</span>
           {task.epic && <span className="chip bg-purple-500/15 text-purple-500">{task.epic.key}</span>}
         </span>
@@ -435,7 +436,7 @@ export default function TaskModal({
               >
                 <CornerUpLeft size={13} className="text-muted" />
                 <span className="text-xs font-medium text-muted">Parent</span>
-                <TypeIcon type={task.parentTask.type} size={12} />
+                <TypeIcon type={task.parentTask.type} types={taskTypes} size={12} />
                 <span className="font-mono text-xs text-muted">{task.parentTask.key}</span>
                 <span className="truncate">{task.parentTask.title}</span>
               </button>
@@ -598,8 +599,8 @@ export default function TaskModal({
             </Field>
             <Field label="Type">
               <select className={selectCls} value={task.type} disabled={!canEdit} onChange={(e) => patch({ type: e.target.value })}>
-                {TASK_TYPES.filter((t) => t !== "subtask" || task.type === "subtask").map((t) => (
-                  <option key={t} value={t}>{TYPE_META[t].label}</option>
+                {taskTypes.filter((t: Any) => t.id !== "subtask" || task.type === "subtask").map((t: Any) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
             </Field>

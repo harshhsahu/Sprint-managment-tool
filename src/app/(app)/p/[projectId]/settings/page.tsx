@@ -10,11 +10,52 @@ import {
   useUpdateProjectMemberMutation, useRemoveProjectMemberMutation, useRestoreProjectMemberMutation,
 } from "@/store/hooks";
 import { errMsg } from "@/store/api";
-import { Spinner, Avatar, TypeIcon, StatusBadge } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { Spinner, Avatar, TypeIcon, StatusBadge, TypeIconGlyph } from "@/components/ui";
 import TaskModal from "@/components/TaskModal";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
 import { useApp } from "@/components/AppShell";
-import { ASSIGNABLE_ROLES, ROLE_LABELS, STATUS_CATEGORIES, OPTIONAL_TASK_FIELDS, REQUIRABLE_TASK_FIELDS, CUSTOM_FIELD_TYPES } from "@/lib/constants";
+import {
+  ASSIGNABLE_ROLES, ROLE_LABELS, STATUS_CATEGORIES, OPTIONAL_TASK_FIELDS,
+  REQUIRABLE_TASK_FIELDS, CUSTOM_FIELD_TYPES, DEFAULT_TASK_TYPES, CURATED_TYPE_ICONS,
+} from "@/lib/constants";
+
+/** Popover grid to pick a lucide icon for a task type from the curated set. */
+function IconPicker({ value, color, onChange, disabled }: { value: string; color: string; onChange: (icon: string) => void; disabled?: boolean }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        disabled={disabled}
+        className="inline-flex h-7 w-8 items-center justify-center rounded border border-line disabled:opacity-60"
+        style={{ background: color }}
+        title="Choose icon"
+        onClick={() => setOpen((o) => !o)}
+      >
+        <TypeIconGlyph icon={value} size={14} color="white" />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} />
+          <div className="absolute z-40 mt-1 grid w-64 grid-cols-8 gap-1 card p-2 shadow-xl">
+            {CURATED_TYPE_ICONS.map((name) => (
+              <button
+                key={name}
+                type="button"
+                title={name}
+                className={cn("flex h-7 w-7 items-center justify-center rounded hover:bg-line/60", value === name && "bg-accent/20 ring-1 ring-accent")}
+                onClick={() => { onChange(name); setOpen(false); }}
+              >
+                <TypeIconGlyph icon={name} size={15} />
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 
 /** Drop unnamed fields; keep options only for multiselect fields (with named options). */
 function normalizeCustomFields(fields: Any[]): Any[] {
@@ -33,6 +74,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
   const { project, myRole, myCapabilities, mutate } = useProject(projectId);
   const { refresh } = useApp();
   const [statuses, setStatuses] = useState<Any[]>([]);
+  const [taskTypes, setTaskTypes] = useState<Any[]>([]);
   const [hiddenFields, setHiddenFields] = useState<string[]>([]);
   const [requiredFields, setRequiredFields] = useState<string[]>([]);
   const [customFields, setCustomFields] = useState<Any[]>([]);
@@ -72,6 +114,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
     if (project) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatuses(project.statuses.map((s: Any) => ({ ...s })));
+      setTaskTypes((project.taskTypes?.length ? project.taskTypes : DEFAULT_TASK_TYPES).map((t: Any) => ({ ...t })));
       setHiddenFields([...(project.hiddenFields || [])]);
       setRequiredFields([...(project.requiredFields || [])]);
       setCustomFields((project.customFields || []).map((f: Any) => ({ ...f })));
@@ -325,6 +368,51 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
         )}
       </section>
 
+      {/* task types */}
+      <section className="card p-5">
+        <h2 className="mb-1 font-semibold">Task types</h2>
+        <p className="mb-3 text-xs text-muted">The work-item types available in this project. Set each one&apos;s color and icon. <b>Epic</b> and <b>Subtask</b> are built-in and can be restyled but not removed. A type can&apos;t be deleted while tasks still use it.</p>
+        <div className="space-y-2">
+          {taskTypes.map((t, i) => {
+            const setType = (patch: Any) => setTaskTypes(taskTypes.map((x, xi) => (xi === i ? { ...x, ...patch } : x)));
+            return (
+              <div key={t.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-line px-2 py-2">
+                <IconPicker value={t.icon} color={t.color} disabled={!isAdmin} onChange={(icon) => setType({ icon })} />
+                <input type="color" className="h-7 w-8 cursor-pointer rounded border border-line bg-transparent" disabled={!isAdmin} value={t.color}
+                  onChange={(e) => setType({ color: e.target.value })} />
+                <input className="input !w-44 !py-1 text-sm" disabled={!isAdmin} value={t.name}
+                  onChange={(e) => setType({ name: e.target.value })} />
+                {t.system ? (
+                  <span className="chip bg-line/60 text-muted">Built-in</span>
+                ) : (
+                  isAdmin && (
+                    <button className="ml-auto text-red-500" title="Delete type" onClick={() => setTaskTypes(taskTypes.filter((_, xi) => xi !== i))}>
+                      <Trash2 size={14} />
+                    </button>
+                  )
+                )}
+              </div>
+            );
+          })}
+        </div>
+        {isAdmin && (
+          <div className="mt-3 flex gap-2">
+            <button className="btn-ghost" onClick={() => setTaskTypes([...taskTypes, { id: `tt_${Date.now().toString(36)}_${taskTypes.length}`, name: "New type", color: "#3b82f6", icon: "CheckSquare" }])}>
+              <Plus size={14} /> Add type
+            </button>
+            <button
+              className="btn-primary"
+              onClick={() => {
+                const cleaned = taskTypes.filter((t) => t.system || t.name.trim()).map((t) => ({ id: t.id, name: t.name.trim() || t.id, color: t.color, icon: t.icon, system: !!t.system }));
+                save({ taskTypes: cleaned }, "Task types saved");
+              }}
+            >
+              Save task types
+            </button>
+          </div>
+        )}
+      </section>
+
       {/* task fields */}
       <section className="card p-5">
         <h2 className="mb-1 font-semibold">Task fields</h2>
@@ -434,7 +522,7 @@ export default function ProjectSettingsPage({ params }: { params: Promise<{ proj
             {archivedTasks.map((t: Any) => (
               <div key={t._id} className="flex items-center gap-2 rounded-lg border border-line px-2.5 py-2 text-sm transition hover:border-accent">
                 <button onClick={() => setOpenTask(t._id)} className="flex min-w-0 flex-1 items-center gap-2 text-left" title={`Open ${t.key}`}>
-                  <TypeIcon type={t.type} size={12} />
+                  <TypeIcon type={t.type} types={project.taskTypes} size={12} />
                   <span className="font-mono text-xs text-muted">{t.key}</span>
                   <span className="truncate">{t.title}</span>
                   <StatusBadge status={t.status} statuses={project.statuses} />
