@@ -87,6 +87,17 @@ export async function GET(req: Request) {
     if (dueBefore) filter.dueDate.$lte = new Date(dueBefore);
     if (dueAfter) filter.dueDate.$gte = new Date(dueAfter);
   }
+
+  // Completion-date range — drives the "Done calendar" in reports. Because
+  // `completedAt` is only set while a task sits in a done-category status,
+  // this filter inherently returns just completed tasks.
+  const completedBefore = sp.get("completedBefore");
+  const completedAfter = sp.get("completedAfter");
+  if (completedBefore || completedAfter) {
+    filter.completedAt = {};
+    if (completedBefore) filter.completedAt.$lte = new Date(completedBefore);
+    if (completedAfter) filter.completedAt.$gte = new Date(completedAfter);
+  }
   const points = sp.get("points");
   if (points) filter.storyPoints = { $in: points.split(",").map(Number) };
 

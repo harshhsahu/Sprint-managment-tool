@@ -1,14 +1,17 @@
 "use client";
 
-import { use, useState } from "react";
+import { use, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
   XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, CartesianGrid,
 } from "recharts";
 import { useQ } from "@/store/hooks";
-import { Spinner, Avatar } from "@/components/ui";
+import { Spinner, Avatar, TypeIcon, Modal, PriorityBadge } from "@/components/ui";
 import { useProject, ProjectHeader, type Any } from "@/components/project/common";
-import { cn } from "@/lib/utils";
+import TaskJourneyModal from "@/components/TaskJourneyModal";
+import { PRIORITY_META } from "@/lib/constants";
+import { cn, formatDate } from "@/lib/utils";
 
 const PIE_COLORS = ["#6366f1", "#22c55e", "#eab308", "#ef4444", "#06b6d4", "#8b5cf6", "#f97316", "#64748b"];
 
@@ -26,6 +29,7 @@ const TABS = [
   { id: "sprint", label: "Sprint Reports" },
   { id: "project", label: "Project Reports" },
   { id: "flow", label: "Flow Metrics" },
+  { id: "doneCalendar", label: "Done Calendar" },
 ] as const;
 
 export default function ReportsPage({ params }: { params: Promise<{ projectId: string }> }) {
@@ -33,6 +37,9 @@ export default function ReportsPage({ params }: { params: Promise<{ projectId: s
   const { project } = useProject(projectId);
   const [tab, setTab] = useState<(typeof TABS)[number]["id"]>("sprint");
   const [burndownSprint, setBurndownSprint] = useState("");
+  const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+  const [journeyTask, setJourneyTask] = useState<string | null>(null);
+  const [dayModal, setDayModal] = useState<Date | null>(null);
 
   const { data: sprintList } = useQ.useSprints(`/api/sprints?project=${projectId}&archived=1`);
   const { data: velocity } = useQ.useReports(tab === "sprint" ? `/api/reports/${projectId}?type=velocity` : null);
@@ -42,6 +49,34 @@ export default function ReportsPage({ params }: { params: Promise<{ projectId: s
   const { data: dist } = useQ.useReports(tab === "project" ? `/api/reports/${projectId}?type=distribution` : null);
   const { data: aging } = useQ.useReports(tab === "project" ? `/api/reports/${projectId}?type=aging` : null);
   const { data: flow } = useQ.useReports(tab === "flow" ? `/api/reports/${projectId}?type=flow` : null);
+
+  // Done-calendar: fetch tasks completed within the visible month.
+  const monthStart = month;
+  const monthEnd = new Date(month.getFullYear(), month.getMonth() + 1, 0);
+  const doneUrl =
+    tab === "doneCalendar"
+      ? `/api/tasks?project=${projectId}&limit=200&completedAfter=${monthStart.toISOString()}&completedBefore=${new Date(monthEnd.getTime() + 86400000).toISOString()}`
+      : null;
+  const { data: doneData, mutate: mutateDone, isLoading: doneLoading } = useQ.useTasks(doneUrl);
+  const doneTasks: Any[] = useMemo(() => doneData?.tasks || [], [doneData]);
+
+  const weeks = useMemo(() => {
+    const firstDay = new Date(monthStart);
+    firstDay.setDate(1 - ((firstDay.getDay() + 6) % 7)); // start on Monday
+    const days: Date[] = [];
+    const d = new Date(firstDay);
+    while (d <= monthEnd || days.length % 7 !== 0) {
+      days.push(new Date(d));
+      d.setDate(d.getDate() + 1);
+    }
+    const ws: Date[][] = [];
+    for (let i = 0; i < days.length; i += 7) ws.push(days.slice(i, i + 7));
+    return ws;
+  }, [monthStart, monthEnd]);
+
+  const doneOn = (day: Date) =>
+    doneTasks.filter((t) => t.completedAt && new Date(t.completedAt).toDateString() === day.toDateString());
+  const todayStr = new Date().toDateString();
 
   if (!project) return <Spinner label="Loading reports…" />;
 
@@ -253,6 +288,97 @@ export default function ReportsPage({ params }: { params: Promise<{ projectId: s
             ) : <Spinner />}
           </ChartCard>
         </div>
+      )}
+
+      {tab === "doneCalendar" && (
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <p className="text-xs text-muted">Completed tasks placed by their done date — click one to see its full journey.</p>
+            <div className="flex items-center gap-1">
+              <button className="btn-ghost !p-1.5" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}><ChevronLeft size={15} /></button>
+              <span className="w-36 text-center text-sm font-semibold">
+                {month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}
+              </span>
+              <button className="btn-ghost !p-1.5" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}><ChevronRight size={15} /></button>
+              <button className="btn-ghost !py-1.5 text-xs" onClick={() => { const d = new Date(); setMonth(new Date(d.getFullYear(), d.getMonth(), 1)); }}>Today</button>
+            </div>
+          </div>
+
+          {doneLoading && !doneData ? (
+            <Spinner />
+          ) : (
+            <div className="card overflow-hidden">
+              <div className="grid grid-cols-7 border-b border-line text-center text-xs font-semibold uppercase text-muted">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => <div key={d} className="py-2">{d}</div>)}
+              </div>
+              {weeks.map((week, wi) => (
+                <div key={wi} className="grid grid-cols-7 border-b border-line last:border-0">
+                  {week.map((day) => {
+                    const inMonth = day.getMonth() === month.getMonth();
+                    const dayTasks = doneOn(day);
+                    return (
+                      <div key={day.toISOString()} className={cn("min-h-24 border-r border-line p-1.5 last:border-r-0", !inMonth && "bg-background/60 opacity-50")}>
+                        <div className={cn("mb-1 flex items-center justify-between text-xs", day.toDateString() === todayStr ? "font-bold" : "text-muted")}>
+                          <span className={cn(day.toDateString() === todayStr && "flex h-5 w-5 items-center justify-center rounded-full bg-accent text-white")}>{day.getDate()}</span>
+                          {dayTasks.length > 0 && <span className="chip !text-[10px] bg-green-500/15 text-green-600">{dayTasks.length}</span>}
+                        </div>
+                        <div className="space-y-1">
+                          {dayTasks.slice(0, 3).map((t) => (
+                            <button
+                              key={t._id}
+                              onClick={() => setJourneyTask(t._id)}
+                              className="flex w-full items-center gap-1 rounded border border-line bg-card px-1 py-0.5 text-left text-[11px] hover:border-accent"
+                              style={{ borderLeftColor: PRIORITY_META[t.priority as keyof typeof PRIORITY_META]?.color, borderLeftWidth: 2 }}
+                              title={`${t.key} ${t.title}`}
+                            >
+                              <TypeIcon type={t.type} types={project?.taskTypes} size={10} />
+                              <span className="truncate">{t.title}</span>
+                            </button>
+                          ))}
+                          {dayTasks.length > 3 && (
+                            <button
+                              onClick={() => setDayModal(day)}
+                              className="w-full rounded px-1 py-0.5 text-left text-[10px] font-medium text-accent hover:bg-accent/10"
+                            >
+                              +{dayTasks.length - 3} more
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {dayModal && (
+        <Modal open onClose={() => setDayModal(null)} title={`Completed on ${formatDate(dayModal)}`}>
+          <div className="space-y-1">
+            {doneOn(dayModal).map((t) => {
+              const st = (project.statuses || []).find((s: Any) => s.id === t.status);
+              return (
+                <button
+                  key={t._id}
+                  onClick={() => { setJourneyTask(t._id); setDayModal(null); }}
+                  className="flex w-full items-center gap-2 rounded-lg border border-line px-2 py-1.5 text-left text-sm hover:border-accent"
+                >
+                  <TypeIcon type={t.type} types={project?.taskTypes} size={12} />
+                  <span className="font-mono text-xs text-muted">{t.key}</span>
+                  <span className="min-w-0 flex-1 truncate">{t.title}</span>
+                  {st && <span className="chip !text-[10px]" style={{ background: `${st.color}22`, color: st.color }}>{st.name}</span>}
+                  <PriorityBadge priority={t.priority} compact />
+                </button>
+              );
+            })}
+          </div>
+        </Modal>
+      )}
+
+      {journeyTask && (
+        <TaskJourneyModal taskId={journeyTask} project={project} onClose={() => { setJourneyTask(null); mutateDone(); }} />
       )}
     </div>
   );
