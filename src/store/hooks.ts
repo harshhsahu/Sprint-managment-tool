@@ -76,8 +76,8 @@ export const useQ = {
   useSearch: (q: string | null | undefined) =>
     useSwrLike(api.useGetSearchQuery(q ?? skipToken)),
   useDashboards: () => useSwrLike(api.useGetDashboardsQuery()),
-  useDashboardData: (opts?: Opts) =>
-    useSwrLike(api.useGetDashboardDataQuery(undefined, opts)),
+  useDashboardData: (url: string | null | undefined, opts?: Opts) =>
+    useSwrLike(api.useGetDashboardDataQuery(url ?? skipToken, opts)),
   useReports: (url: string | null | undefined) =>
     useSwrLike(api.useGetReportsQuery(url ?? skipToken)),
   useFilters: (url: string | null | undefined) =>

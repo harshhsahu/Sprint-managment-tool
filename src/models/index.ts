@@ -279,14 +279,36 @@ const DashboardSchema = new Schema(
     user: { type: Types.ObjectId, ref: "User", required: true, index: true },
     name: { type: String, required: true },
     isDefault: { type: Boolean, default: false },
+    // Global filter scope remembered per dashboard (all optional). Time-series
+    // widgets read `range`; snapshot widgets read the rest. See /api/dashboards/data.
+    // NOTE: this MUST be an explicit `new Schema`, not a plain object literal —
+    // the `type` sub-field would otherwise collide with Mongoose's reserved
+    // `type` key and make Mongoose treat the whole `filters` field as `[String]`.
+    filters: new Schema(
+      {
+        projects: [{ type: Types.ObjectId, ref: "Project" }],
+        assignees: [{ type: String }], // user ids or the literal "unassigned"
+        lead: { type: String, default: null }, // project-lead user id
+        range: { type: String, default: null }, // 30d | 90d | 6m | 12m
+        priority: [{ type: String }],
+        type: [{ type: String }],
+      },
+      { _id: false }
+    ),
     widgets: [
       new Schema(
         {
           id: String,
-          // assigned_to_me | sprint_progress | recent_activity | by_status | by_priority | by_assignee | open_vs_closed | upcoming_deadlines | team_workload
+          // assigned_to_me | sprint_progress | recent_activity | by_status | by_priority | by_assignee
+          // | open_vs_closed | upcoming_deadlines | team_workload | project_growth | velocity_trend | throughput | team_growth
           type: { type: String },
           w: { type: Number, default: 1 }, // grid width units (1-2)
           project: { type: Types.ObjectId, ref: "Project", default: null },
+          // per-widget presentation + filter overrides (all optional)
+          chartType: { type: String, default: null }, // pie | donut | bar | line | area
+          range: { type: String, default: null }, // 30d | 90d | 6m | 12m
+          projects: [{ type: Types.ObjectId, ref: "Project" }],
+          assignees: [{ type: String }],
         },
         { _id: false }
       ),

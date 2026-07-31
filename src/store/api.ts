@@ -88,7 +88,7 @@ export const api = createApi({
     getActivity: b.query<Any, string>({ query: (url) => url, providesTags: ["Activity"] }),
     getSearch: b.query<Any, string>({ query: (q) => `/api/search?q=${encodeURIComponent(q)}` }),
     getDashboards: b.query<Any, void>({ query: () => "/api/dashboards", providesTags: ["Dashboards"] }),
-    getDashboardData: b.query<Any, void>({ query: () => "/api/dashboards/data" }),
+    getDashboardData: b.query<Any, string>({ query: (url) => url }),
     getReports: b.query<Any, string>({ query: (url) => url, providesTags: ["Reports"] }),
     getFilters: b.query<Any, string>({ query: (url) => url, providesTags: ["Filters"] }),
     getProjectInvites: b.query<Any, string>({ query: (url) => url, providesTags: ["ProjectInvites"] }),
