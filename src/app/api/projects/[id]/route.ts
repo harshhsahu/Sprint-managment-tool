@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Project, Task, Sprint } from "@/models";
-import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
+import { getProjectRole, getCapabilities, can, isProjectReadOnly } from "@/lib/permissions";
 import { SYSTEM_TASK_TYPE_IDS, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -26,7 +26,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
     });
   if (!project) return error("Project not found", 404);
   const myCapabilities = [...(await getCapabilities(user, id))];
-  return json({ project, myRole: role, myCapabilities });
+  const readOnly = await isProjectReadOnly(id);
+  return json({ project, myRole: role, myCapabilities, readOnly });
 }
 
 const statusSchema = z.object({

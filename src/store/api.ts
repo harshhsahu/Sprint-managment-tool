@@ -177,6 +177,12 @@ export const api = createApi({
       query: (id) => write(`/api/workspaces/${id}`, "DELETE"),
       invalidatesTags: ["Workspaces", "Projects"],
     }),
+    // Owner/admin: rename / re-describe a workspace. Project headers show the
+    // workspace name, so project caches are refreshed too.
+    updateWorkspace: b.mutation<Any, { id: string; set: { name?: string; description?: string } }>({
+      query: ({ id, set }) => write(`/api/workspaces/${id}`, "PATCH", set),
+      invalidatesTags: ["Workspaces", "Projects", "Project"],
+    }),
     // Super-admin only (server enforces). Assign/change a workspace's billing plan.
     // Optimistic: the admin table's controlled <select>s are bound to server data,
     // so without patching the cache immediately they'd snap back to the old value

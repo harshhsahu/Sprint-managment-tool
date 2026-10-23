@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { Plus, FolderKanban, Users, Settings, Trash2 } from "lucide-react";
 import {
-  useQ, useCreateWorkspaceMutation, useDeleteWorkspaceMutation, useCreateProjectMutation,
+  useQ, useCreateWorkspaceMutation, useDeleteWorkspaceMutation, useUpdateWorkspaceMutation, useCreateProjectMutation,
   useInviteWorkspaceMemberMutation, useUpdateWorkspaceMemberMutation, useRemoveWorkspaceMemberMutation,
 } from "@/store/hooks";
 import { errMsg } from "@/store/api";
@@ -12,6 +12,7 @@ import { Modal, Avatar, Spinner, EmptyState } from "@/components/ui";
 import { PlanBadge } from "@/components/PlanBadge";
 import { useApp } from "@/components/AppShell";
 import { ROLE_LABELS, ASSIGNABLE_ROLES } from "@/lib/constants";
+import { resolveStatus } from "@/lib/plans";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
@@ -22,6 +23,7 @@ export default function WorkspacesPage() {
   const { refresh, me } = useApp();
   const [createWorkspaceM] = useCreateWorkspaceMutation();
   const [deleteWorkspaceM] = useDeleteWorkspaceMutation();
+  const [updateWorkspaceM, { isLoading: savingWs }] = useUpdateWorkspaceMutation();
   const [createProjectM] = useCreateProjectMutation();
   const [inviteMemberM] = useInviteWorkspaceMemberMutation();
   const [updateMemberM] = useUpdateWorkspaceMemberMutation();
@@ -31,6 +33,8 @@ export default function WorkspacesPage() {
   const [manageWs, setManageWs] = useState<Any>(null);
   const [form, setForm] = useState({ name: "", description: "", key: "" });
   const [invite, setInvite] = useState({ email: "", role: "editor" });
+  const [wsForm, setWsForm] = useState({ name: "", description: "" });
+  const [wsSaved, setWsSaved] = useState(false);
   const [err, setErr] = useState("");
 
   const workspaces = data?.workspaces || [];
@@ -70,11 +74,37 @@ export default function WorkspacesPage() {
     } catch (e) { setErr(errMsg(e)); }
   }
 
+  function openManage(ws: Any) {
+    setErr("");
+    setWsSaved(false);
+    setWsForm({ name: ws.name || "", description: ws.description || "" });
+    setManageWs(ws);
+  }
+
+  async function submitWorkspaceEdit(e: React.FormEvent) {
+    e.preventDefault();
+    setErr("");
+    setWsSaved(false);
+    try {
+      const res = await updateWorkspaceM({
+        id: manageWs._id,
+        set: { name: wsForm.name.trim(), description: wsForm.description.trim() },
+      }).unwrap();
+      setManageWs({ ...manageWs, name: res.workspace.name, description: res.workspace.description });
+      setWsSaved(true);
+      refresh();
+    } catch (e) { setErr(errMsg(e)); }
+  }
+
   async function deleteWorkspace(ws: Any) {
     if (!confirm(`Delete workspace "${ws.name}" and ALL of its projects and tasks? This cannot be undone.`)) return;
     await deleteWorkspaceM(ws._id).unwrap();
     refresh();
   }
+
+  // Expired trial/plan → read-only: no new projects, invites or role changes.
+  const isExpired = (ws: Any) => resolveStatus(ws) === "expired";
+  const manageExpired = !!manageWs && isExpired(workspaces.find((w: Any) => w._id === manageWs._id) || manageWs);
 
   const isWsAdmin = (ws: Any) =>
     String(ws.owner?._id || ws.owner) === me?._id ||
@@ -121,7 +151,7 @@ export default function WorkspacesPage() {
                   </span>
                   {isWsAdmin(ws) && (
                     <>
-                      <button className="btn-ghost !p-2" title="Members & settings" onClick={() => { setErr(""); setManageWs(ws); }}>
+                      <button className="btn-ghost !p-2" title="Edit workspace & members" onClick={() => openManage(ws)}>
                         <Settings size={14} />
                       </button>
                       {String(ws.owner?._id || ws.owner) === me?._id && (
@@ -143,7 +173,7 @@ export default function WorkspacesPage() {
                     </span>
                   </Link>
                 ))}
-                {isWsAdmin(ws) && (
+                {isWsAdmin(ws) && !isExpired(ws) && (
                   <button
                     className="flex items-center justify-center gap-2 rounded-lg border border-dashed border-line p-3 text-sm text-muted hover:border-accent hover:text-accent transition"
                     onClick={() => { setErr(""); setForm({ name: "", description: "", key: "" }); setCreateProjIn(ws); }}
@@ -184,10 +214,32 @@ export default function WorkspacesPage() {
       </Modal>
 
       {/* manage members */}
-      <Modal open={!!manageWs} onClose={() => setManageWs(null)} title={`Members — ${manageWs?.name || ""}`}>
+      <Modal open={!!manageWs} onClose={() => setManageWs(null)} title={`Workspace settings — ${manageWs?.name || ""}`}>
         {manageWs && (
           <div className="space-y-4">
+            <form onSubmit={submitWorkspaceEdit} className="space-y-2 border-b border-line pb-4">
+              <div className="text-xs font-semibold uppercase text-muted">Details</div>
+              <input className="input" placeholder="Workspace name" required minLength={2} maxLength={80} disabled={manageExpired}
+                value={wsForm.name} onChange={(e) => { setWsForm({ ...wsForm, name: e.target.value }); setWsSaved(false); }} />
+              <textarea className="input" placeholder="Description (optional)" maxLength={500} disabled={manageExpired}
+                value={wsForm.description} onChange={(e) => { setWsForm({ ...wsForm, description: e.target.value }); setWsSaved(false); }} />
+              {!manageExpired && (
+                <div className="flex items-center gap-2">
+                  <button className="btn-primary !py-1.5 text-xs" disabled={savingWs || wsForm.name.trim().length < 2}>
+                    {savingWs ? "Saving…" : "Save changes"}
+                  </button>
+                  {wsSaved && <span className="text-xs text-green-500">Saved</span>}
+                </div>
+              )}
+            </form>
+            <div className="text-xs font-semibold uppercase text-muted">Members</div>
             <p className="text-xs text-muted">Workspace members get access to <b>every project</b> in this workspace at their role.</p>
+            {manageExpired && (
+              <p className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-600 dark:text-red-400">
+                This workspace&apos;s trial/plan has expired — inviting members and changing roles is disabled until it is upgraded.
+              </p>
+            )}
+            {!manageExpired && (
             <form onSubmit={submitInvite} className="flex gap-2">
               <input className="input" type="email" placeholder="teammate@company.com" required value={invite.email} onChange={(e) => setInvite({ ...invite, email: e.target.value })} />
               <select className="input !w-32" value={invite.role} onChange={(e) => setInvite({ ...invite, role: e.target.value })}>
@@ -195,6 +247,7 @@ export default function WorkspacesPage() {
               </select>
               <button className="btn-primary shrink-0">Invite</button>
             </form>
+            )}
             {err && <p className="text-sm text-red-500">{err}</p>}
             <div className="space-y-2">
               {manageWs.members?.map((m: Any) => {
@@ -212,6 +265,7 @@ export default function WorkspacesPage() {
                       <select
                         className="ml-auto rounded border border-line bg-card px-2 py-1 text-xs"
                         value={m.role}
+                        disabled={manageExpired}
                         onChange={async (e) => {
                           const res = await updateMemberM({ id: manageWs._id, userId: m.user._id, role: e.target.value }).unwrap();
                           setManageWs(res.workspace);

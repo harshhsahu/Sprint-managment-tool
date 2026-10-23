@@ -73,19 +73,27 @@ export async function isWorkspaceExpired(workspaceId: string): Promise<boolean> 
   return resolveStatus(ws) === "expired";
 }
 
-/** All capabilities a user has on a project — purely role-based.
+/** True when the project's workspace is expired (and so read-only for everyone). */
+export async function isProjectReadOnly(projectId: string): Promise<boolean> {
+  const project = await Project.findById(projectId).select("workspace");
+  return !!project && (await isWorkspaceExpired(String(project.workspace)));
+}
 
-    NOTE: v1 billing is DISPLAY-ONLY (see plans.ts). Plan tier and trial/plan
-    expiry are surfaced in the UI (badges, days-remaining) but must NOT hard-block
-    actions — that lock is deferred to v2. So capabilities depend only on the
-    user's role, never on subscription status. Previously an "expired" workspace
-    (e.g. a paid plan whose subscriptionStatus was still "trialing" with a lapsed
-    trial date) collapsed every role to read-only, which silently stripped
-    task:comment/edit/etc. even from admins. isWorkspaceExpired remains (used for
-    display + the v2 enforcement that will re-introduce a read-only cap set). */
+/** Error message shown when a write is attempted on an expired workspace. */
+export const READ_ONLY_MESSAGE =
+  "This workspace's trial/plan has expired — it is read-only until a plan is assigned";
+
+/** All capabilities a user has on a project.
+
+    Role-based, except when the workspace's trial/plan has lapsed (resolveStatus
+    === "expired"): then EVERY role — owner included — is collapsed to view-only
+    until the super admin assigns a plan. Assigning a paid plan from the admin
+    panel sets subscriptionStatus "active", so a paid workspace is never locked
+    by a stale trial date. */
 export async function getCapabilities(user: UserDoc, projectId: string): Promise<Set<Capability>> {
   const role = await getProjectRole(user, projectId);
   if (!role) return new Set();
+  if (await isProjectReadOnly(projectId)) return new Set(["project:view"]);
   return new Set(ROLE_CAPS[role]);
 }
 

@@ -92,7 +92,9 @@ function Row({ task, onClick, selected, toggle, statuses, types }: { task: Any; 
 
 export default function BacklogPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
-  const { project } = useProject(projectId);
+  const { project, myCapabilities } = useProject(projectId);
+  const canEdit = myCapabilities.includes("task:edit");
+  const canManageSprints = myCapabilities.includes("sprint:manage");
   const [filters, setFilters] = useState<TaskFilters>(emptyFilters);
   const [selected, setSelected] = useState<string[]>([]);
   const [openTask, setOpenTask] = useState<string | null>(null);
@@ -190,7 +192,9 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
   return (
     <div className="mx-auto max-w-5xl p-5">
       <ProjectHeader project={project} title="Backlog & Sprints">
-        <button className="btn-primary !py-1.5 text-xs" onClick={() => setSprintModal({})}><Plus size={13} /> New sprint</button>
+        {canManageSprints && (
+          <button className="btn-primary !py-1.5 text-xs" onClick={() => setSprintModal({})}><Plus size={13} /> New sprint</button>
+        )}
       </ProjectHeader>
 
       <div className="mb-4">
@@ -228,7 +232,7 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
                         <span className="chip bg-red-500/15 text-red-500">Over capacity</span>
                       )}
                     </span>
-                    {s && (
+                    {s && canManageSprints && (
                       <span className="flex items-center gap-1">
                         {s.status === "planned" && (
                           <button className="btn-primary !px-2 !py-1 text-xs" onClick={() => sprintAction(s, "start")}><Play size={12} /> Start</button>
@@ -248,7 +252,7 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
                       {(provided, snapshot) => (
                         <div ref={provided.innerRef} {...provided.droppableProps} className={cn("min-h-10", snapshot.isDraggingOver && "bg-accent/5")}>
                           {section.tasks.map((t, i) => (
-                            <Draggable draggableId={t._id} index={i} key={t._id}>
+                            <Draggable draggableId={t._id} index={i} key={t._id} isDragDisabled={!canEdit}>
                               {(dp, ds) => (
                                 <div ref={dp.innerRef} {...dp.draggableProps} {...dp.dragHandleProps} className={cn(ds.isDragging && "opacity-90 shadow-lg")}>
                                   <Row task={t} onClick={() => setOpenTask(t._id)} selected={selected.includes(t._id)} toggle={() => toggleSelect(t._id)} statuses={statuses} types={project?.taskTypes} />
@@ -259,7 +263,7 @@ export default function BacklogPage({ params }: { params: Promise<{ projectId: s
                           {provided.placeholder}
                           {section.tasks.length === 0 && (
                             <p className="px-4 py-3 text-xs text-muted">
-                              {s ? "Drag tasks here to plan this sprint." : "Backlog is empty."}
+                              {s && canEdit ? "Drag tasks here to plan this sprint." : s ? "No tasks in this sprint." : "Backlog is empty."}
                             </p>
                           )}
                         </div>
