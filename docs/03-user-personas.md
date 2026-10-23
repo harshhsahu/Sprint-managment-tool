@@ -1,12 +1,23 @@
+---
+covers: ["src/lib/constants.ts", "src/lib/permissions.ts"]
+verified_at: 5ec7e9c
+verified_on: 2026-10-23
+---
 # 03 User Personas
 
 > Access uses one role set — **owner / admin / editor / viewer** — applied at the workspace
-> level (grants access to all projects) or as a per-project guest.
+> level (grants access to all projects) or as a per-project **guest**. Capability matrix and
+> enforcement: [modules/04-roles-permissions.md](modules/04-roles-permissions.md).
+> The ICP these personas belong to (small Indian software teams) is in [01-product-vision.md](01-product-vision.md).
 
-## Owner (workspace creator)
-- **Role:** owns a workspace, creates projects, manages members, controls everything.
-- **Goals:** keep teams organized, see cross-project health, control access.
-- **How this product helps:** workspaces, dashboards, workload widgets, full settings.
+> [!TODO]
+> These personas are derived from the role model in code, not from user research. Real persona
+> goals and frustrations need a human.
+
+## Owner (workspace creator, usually the buyer)
+- **Role:** creates the workspace, invites the team, creates projects; the person whose trial converts to a plan.
+- **Goals:** keep teams organized, see cross-project health, control access and cost.
+- **How this product helps:** workspaces, owner/lead dashboard template, full settings, plan badge with days left.
 - **Access level:** `owner` — every capability, incl. deleting the workspace/project.
 
 ## Admin
@@ -24,5 +35,13 @@
 ## Viewer (stakeholder)
 - **Role:** watches progress without changing anything.
 - **Goals:** understand status, upcoming deadlines, sprint progress.
-- **How this product helps:** read-only dashboards and reports.
+- **How this product helps:** read-only boards, dashboards and reports.
 - **Access level:** `viewer` — `project:view` only.
+
+## Project guest (e.g. a client)
+- **Role:** someone outside the workspace given access to a single project (`project.members`).
+- **Access level:** admin/editor/viewer on that one project only.
+
+## Super admin (Kanbo operator)
+- **Role:** the single operator account (`SUPER_ADMIN_EMAIL`) that manages users and assigns plans in `/admin`.
+- **Access level:** global user administration; no automatic access to workspaces it isn't a member of.

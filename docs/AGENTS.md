@@ -1,3 +1,8 @@
+---
+covers: ["src/lib/**", "src/store/**", "src/models/**", "src/app/api/**"]
+verified_at: 5ec7e9c
+verified_on: 2026-10-23
+---
 # AI Agent Guidelines (Kanbo)
 
 Rules and heuristics for AI coding agents working in the `sprint-management` repository.
@@ -12,7 +17,8 @@ default agent behavior.
 Kanbo is a **fully-integrated transactional CRUD app** over a single MongoDB
 database (via Mongoose). There is no mock layer and no multi-backend aggregation.
 
-- UI components (client) fetch through the API layer only, using SWR against `/api/**`.
+- UI components (client) fetch through the API layer only, using RTK Query endpoints in `src/store/api.ts`
+  (wrapped by `useQ` in `src/store/hooks.ts`) against `/api/**`. See [11-state-management.md](11-state-management.md).
 - The API route handlers (`src/app/api/**`) are the **only** code that opens a DB
   connection or touches Mongoose models.
 - **Do NOT** import Mongoose models or `dbConnect` into client components — they are
@@ -39,9 +45,11 @@ One approved library per concern. Adding a second is a review-blocking change.
 - **Icons:** `lucide-react` only.
 - **Charts:** `recharts` only.
 - **Drag & drop:** `@hello-pangea/dnd` only.
-- **Data fetching (client):** `swr` only.
+- **Data fetching (client):** Redux Toolkit + RTK Query only (`src/store/`). `swr` is still in `package.json` but
+  unused since `9b332de` — do not import it.
 - **Validation:** `zod` for every API request body.
-- **Auth/crypto:** `jose` (JWT) + `bcryptjs` (password hashing).
+- **Auth/crypto:** Firebase Auth for credentials (`src/lib/firebase/`), `jose` for the app's `sm_session` JWT.
+  `bcryptjs` is used only by `scripts/seed.mjs`.
 
 ## 4. Roles & Capabilities
 
@@ -58,6 +66,12 @@ Roles resolve to capabilities (`project:view`, `task:create|edit|delete|comment`
 `getCapabilities()`**, never role-name string checks. Client UI gates on `myCapabilities`
 (returned by the project/task GET routes). There is no custom-role builder — the four
 roles are the whole set.
+
+**Expired workspace = read-only.** When the trial/plan has lapsed, `getCapabilities` returns only
+`project:view` for every role (owner included). A new workspace-level write route must also call
+`isWorkspaceExpired` and return 403 with `READ_ONLY_MESSAGE` (see `src/app/api/projects/route.ts:POST`).
+New write UI must be gated on capabilities so it disappears in read-only mode. See
+[modules/07-billing-plans.md](modules/07-billing-plans.md) and [DECISIONS.md](DECISIONS.md#adr-002-expired-trialplan--read-only-for-every-role).
 
 ## 5. Access Model (workspace grants all projects)
 
@@ -78,7 +92,8 @@ This is a single-datastore app, so an API failure is a real error, not a degrade
 - On success, routes return the resource under a named key: `{ tasks }`, `{ task }`,
   `{ project }`, `{ workspace }`, etc.
 - On failure, return `{ error: string }` with an appropriate status (`400/401/403/404/409/422/500`).
-- The client ([`src/lib/client.ts`](../src/lib/client.ts)) throws on non-2xx and redirects to `/login` on 401.
+- The RTK Query base query in `src/store/api.ts` redirects to `/login?next=…` on 401. (`src/lib/client.ts` is a
+  leftover from the SWR era and is imported nowhere.)
 - UI must render loading / empty / error states (see [`18-error-handling.md`](18-error-handling.md)).
 
 ## 7. Task Keys & Numbering
@@ -93,3 +108,15 @@ If you learn something new about the data model, or change an API/data contract,
 **must** update the corresponding file in [`api/`](api/), [`database/`](database/),
 [`modules/`](modules/), or [`current-infrastructure/`](current-infrastructure/) in the
 same change. The docs are the source of truth.
+
+## 9. Task status side-effects
+
+Any code that changes `task.status` must set `completedAt`/`startedAt`, log activity and notify watchers —
+the same as `PATCH /api/tasks/[id]`. Today three paths do (PATCH, reorder, bulk); see
+[api/tasks.md](api/tasks.md#status-write-paths). Adding a fourth path without the side-effects empties the
+Done calendar and velocity for those tasks.
+
+## 10. Prices and plans
+
+Prices, limits and trial length live only in `src/lib/plans.ts`. The landing page derives from it — never
+hardcode a price or a day count elsewhere.

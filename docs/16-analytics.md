@@ -1,21 +1,28 @@
+---
+covers: ["src/lib/firebase/client.ts", "src/lib/apiHelpers.ts", "package.json"]
+verified_at: 5ec7e9c
+verified_on: 2026-10-23
+---
+
 # 16 Analytics
 
 ## Tooling
-No external analytics/telemetry provider is wired up in V1. The closest equivalent is the
-in-app **Activity / audit log** (`Activity` model) — a durable, per-project record of
-meaningful actions, written by `logActivity()` in the API layer.
+None. No product-analytics or telemetry SDK is installed or initialised:
+- `package.json` has no analytics dependency (no GA/gtag, PostHog, Mixpanel, Segment, Sentry, Vercel Analytics).
+- `firebase/analytics` is never imported. `NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID` is only passed into the Firebase config object in `src/lib/firebase/client.ts`, which by itself collects nothing.
+- `Dockerfile` sets `NEXT_TELEMETRY_DISABLED=1`.
 
-## Events (audit actions)
-| Event (action) | Trigger | Properties |
+> [!TODO]
+> Whether product analytics are wanted (and which events matter for a per-seat SaaS) is a product decision not expressed in the repo. Needs a human.
+
+## Events
+There are no analytics events. The closest data is the **Activity audit log** — an audit trail shown in the UI, not analytics. It is written by `src/lib/apiHelpers.ts:logActivity` into the `Activity` collection; action names are dotted `entity.verb` strings with prefixes `task.`, `sprint.`, `project.`, `workspace.`, `user.`. The action catalogue and read APIs live in [modules/10-notifications-search-activity.md](modules/10-notifications-search-activity.md) and [api/insights.md](api/insights.md). <!-- verify:ignore -->
+
+| Event | Trigger | Properties |
 |---|---|---|
-| `task.created` / `task.updated` / `task.deleted` | task mutations | `project`, `task`, `user`, `detail` |
-| `task.commented` / `task.duplicated` / `task.bulk_updated` | task sub-actions | `project`, `user`, `detail` |
-| `sprint.created` / `sprint.started` / `sprint.completed` / `sprint.archived` | sprint lifecycle | `project`, `sprint`, `user` |
-| `project.created` / `project.updated` / `project.member_added` / `project.role_changed` | project changes | `project`, `workspace`, `user` |
-| `workspace.created` / `workspace.member_added` / `workspace.role_changed` | workspace changes | `workspace`, `user` |
+| _(none)_ | — | — |
 
 ## Conventions
-- Actions are dotted `entity.verb` strings; keep them stable (they're shown in the UI).
-- **No PII/secrets** in analytics or logs beyond the user reference and a human `detail`.
-- If a real analytics provider is added later, initialize it client-side and mirror these
-  event names — do not send passwords, tokens, or emails as event properties.
+- Keep activity action strings stable — the UI displays them.
+- Activity rows carry user/project/workspace refs and a human `detail`; don't add passwords, tokens or ID tokens to `detail` or `meta`.
+- If a provider is added: initialise it client-side, mirror the activity action names, add its env vars to [15-environment-setup.md](15-environment-setup.md), and keep emails and tokens out of event properties.
