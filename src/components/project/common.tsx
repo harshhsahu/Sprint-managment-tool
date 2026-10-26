@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Filter, X, Save } from "lucide-react";
+import { Filter, X, Save, Lock } from "lucide-react";
 import { useQ, useSaveFilterMutation, useBulkTasksMutation } from "@/store/hooks";
 import { errMsg } from "@/store/api";
 import { Avatar, TypeIcon, PriorityBadge } from "@/components/ui";
@@ -18,6 +18,8 @@ export function useProject(projectId: string) {
     project: data?.project,
     myRole: data?.myRole,
     myCapabilities: (data?.myCapabilities || []) as string[],
+    /** Workspace trial/plan expired — everything is view-only (server enforces it too). */
+    readOnly: !!data?.readOnly,
     mutate,
   };
 }
@@ -242,6 +244,7 @@ export function BulkBar({
   const members = projectAssignees(project);
   const { data: sprintData } = useQ.useSprints(project?._id ? `/api/sprints?project=${project._id}` : null);
   const [bulkTasks, { isLoading: busy }] = useBulkTasksMutation();
+  const { myCapabilities } = useProject(project?._id);
 
   const apply = async (set: Any) => {
     try {
@@ -251,7 +254,7 @@ export function BulkBar({
   };
 
   const selCls = "rounded border border-line bg-card px-2 py-1 text-xs";
-  if (selected.length === 0) return null;
+  if (selected.length === 0 || !myCapabilities.includes("task:edit")) return null;
   return (
     <div className="sticky bottom-3 z-20 mx-auto flex w-fit flex-wrap items-center gap-2 card px-4 py-2.5 shadow-2xl">
       <span className="text-sm font-medium">{selected.length} selected</span>
@@ -283,7 +286,15 @@ export function BulkBar({
 
 /* ---------------------------- ProjectHeader ---------------------------- */
 export function ProjectHeader({ project, title, children }: { project: Any; title: string; children?: React.ReactNode }) {
+  const { readOnly } = useProject(project?._id);
   return (
+    <>
+    {readOnly && (
+      <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm text-red-600 dark:text-red-400">
+        <Lock size={14} className="shrink-0" />
+        This workspace&apos;s trial/plan has expired, so it is read-only. Ask the workspace owner to upgrade to keep editing.
+      </div>
+    )}
     <div className="mb-4 flex flex-wrap items-center gap-3">
       <div>
         <div className="text-xs text-muted">{project?.workspace?.name} / <span className="font-mono">{project?.key}</span></div>
@@ -291,6 +302,7 @@ export function ProjectHeader({ project, title, children }: { project: Any; titl
       </div>
       <div className="ml-auto flex flex-wrap items-center gap-2">{children}</div>
     </div>
+    </>
   );
 }
 

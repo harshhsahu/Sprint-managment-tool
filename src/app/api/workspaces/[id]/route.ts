@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Workspace, Project, Task, Sprint } from "@/models";
-import { getWorkspaceRole, isWorkspaceManager, isSuperAdmin } from "@/lib/permissions";
+import { getWorkspaceRole, isWorkspaceManager, isSuperAdmin, isWorkspaceExpired, READ_ONLY_MESSAGE } from "@/lib/permissions";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
   const { user, res } = await withAuth();
@@ -48,6 +48,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
   if (!touchesPlan) {
     const role = await getWorkspaceRole(user, id);
     if (!isWorkspaceManager(role)) return error("Only workspace owners and admins can edit the workspace", 403);
+    if (await isWorkspaceExpired(id)) return error(READ_ONLY_MESSAGE, 403);
   }
 
   const workspace = await Workspace.findByIdAndUpdate(id, { $set: data }, { new: true });

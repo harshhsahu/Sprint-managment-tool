@@ -1,16 +1,28 @@
+---
+covers: ["src/lib/permissions.ts", "src/lib/plans.ts", "src/lib/constants.ts"]
+verified_at: 5ec7e9c
+verified_on: 2026-10-23
+---
+
 # 24 Feature Flags
 
-Kanbo does **not** use a feature-flag system in V1. Behavior is instead gated by:
+## Tooling
+None. There is no flag library, flag env var, or flag collection in the code. Behaviour is gated by three other mechanisms — don't mistake them for flags:
 
-- **Capabilities** (RBAC) — what a user can do is controlled by their role's capability set,
-  not by flags. See [13-security.md](13-security.md).
-- **Presence of configuration** — optional features degrade by config: e.g. email
-  notifications are simply absent until a provider is configured.
+| Mechanism | Where | What it gates |
+|---|---|---|
+| Capabilities (RBAC) | `src/lib/permissions.ts:can`, `ROLE_CAPS` in `src/lib/constants.ts` | what a role may do — [modules/04-roles-permissions.md](modules/04-roles-permissions.md) |
+| Plan status | `src/lib/permissions.ts:isWorkspaceExpired`, `src/lib/plans.ts:resolveStatus` | lapsed trial/plan → whole workspace read-only — [modules/07-billing-plans.md](modules/07-billing-plans.md) |
+| Super-admin email | `src/lib/constants.ts:isSuperAdminEmail` | `/admin`, user management, plan assignment |
+| `NODE_ENV` | `src/models/index.ts:defineModel`, auth cookie `secure` | dev-only model recompilation; secure cookies in prod |
 
-## If flags are introduced later
-- Prefer a small server-evaluated mechanism (env- or DB-backed) exposed through `/api/**`,
-  never a client-only flag for anything security-relevant.
-- Naming: `feature.<area>.<name>`; default off; record owner + removal plan per flag.
+Plan tiers do not gate features: `PlanLimits` (seats, projects, …) in `src/lib/plans.ts` are shown on the landing and admin pages but no API route enforces them. Only "expired vs not" changes behaviour — see [modules/07-billing-plans.md](modules/07-billing-plans.md).
+
+## Conventions
+If flags are introduced:
+- Evaluate on the server and expose through `/api/**`; never use a client-only flag for anything security- or billing-relevant.
+- Naming: `feature.<area>.<name>`; default off; record owner and removal date in the table below.
+- Env-backed flags go in [15-environment-setup.md](15-environment-setup.md); `NEXT_PUBLIC_*` flags are baked in at build time.
 
 ## Active Flags
 | Flag | Default | Owner | Purpose | Remove by |

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity } from "@/lib/apiHelpers";
 import { Project, Workspace } from "@/models";
-import { getWorkspaceRole, isWorkspaceManager } from "@/lib/permissions";
+import { getWorkspaceRole, isWorkspaceManager, isWorkspaceExpired, READ_ONLY_MESSAGE } from "@/lib/permissions";
 import { DEFAULT_STATUSES, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 export async function GET(req: Request) {
@@ -63,8 +63,7 @@ export async function POST(req: Request) {
   const wsRole = await getWorkspaceRole(user, data.workspace);
   if (!isWorkspaceManager(wsRole)) return error("Only workspace owners and admins can create projects", 403);
 
-  // NOTE: v1 billing is display-only (see plans.ts) — plan/trial expiry does NOT
-  // hard-block content creation. The read-only lock is deferred to v2.
+  if (await isWorkspaceExpired(data.workspace)) return error(READ_ONLY_MESSAGE, 403);
 
   const exists = await Project.findOne({ workspace: data.workspace, key: data.key.toUpperCase() });
   if (exists) return error(`A project with key ${data.key.toUpperCase()} already exists in this workspace`, 409);

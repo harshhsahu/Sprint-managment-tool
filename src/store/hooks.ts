@@ -101,6 +101,7 @@ export const {
   useDeleteSprintMutation,
   useCreateWorkspaceMutation,
   useDeleteWorkspaceMutation,
+  useUpdateWorkspaceMutation,
   useSetWorkspacePlanMutation,
   useInviteWorkspaceMemberMutation,
   useUpdateWorkspaceMemberMutation,

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import {
-  Copy, Trash2, Archive, Plus, Link2, CornerDownRight, CornerUpLeft, ArrowLeft,
+  Copy, Trash2, Archive, Plus, Link2, CornerDownRight, CornerUpLeft, ArrowLeft, Link as LinkIcon, Check,
 } from "lucide-react";
 import { api, errMsg } from "@/store/api";
 import {
@@ -303,6 +303,8 @@ export default function TaskModal({
   const has = (c: string) => caps.includes(c);
   const canEdit = has("task:edit");
   const canComment = has("task:comment");
+  const readOnly = !!data?.readOnly;
+  const [copied, setCopied] = useState(false);
   const members: Any[] = projectAssignees(project);
   const statuses: Any[] = project?.statuses || [];
   const taskTypes: Any[] = project?.taskTypes?.length ? project.taskTypes : DEFAULT_TASK_TYPES;
@@ -384,6 +386,19 @@ export default function TaskModal({
     onChanged?.();
   }
 
+  // Shareable deep link — the board opens the task modal from ?task=<id>.
+  async function copyLink() {
+    const url = `${window.location.origin}/p/${project?._id || task?.project}/board?task=${currentId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+    } catch {
+      window.prompt("Copy this link:", url);
+      return;
+    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+
   async function duplicate() {
     await duplicateTaskM(currentId).unwrap();
     onChanged?.();
@@ -411,6 +426,9 @@ export default function TaskModal({
           <TypeIcon type={task.type} types={taskTypes} />
           <span className="font-mono text-xs text-muted">{task.key}</span>
           {task.epic && <span className="chip bg-purple-500/15 text-purple-500">{task.epic.key}</span>}
+          <button onClick={copyLink} className="btn-ghost !px-2 !py-1 text-xs font-normal" title="Copy link to this task">
+            {copied ? <><Check size={13} className="text-green-500" /> Copied</> : <><LinkIcon size={13} /> Copy link</>}
+          </button>
         </span>
       ) : "Task"
     }>
@@ -560,7 +578,11 @@ export default function TaskModal({
                   {canComment ? (
                     <CommentComposer key={currentId} members={members} busy={busy} onSubmit={addComment} />
                   ) : (
-                    <p className="mt-3 text-xs text-muted">You have view-only access here — commenting is disabled.</p>
+                    <p className="mt-3 text-xs text-muted">
+                      {readOnly
+                        ? "This workspace's trial/plan has expired — it is read-only, so commenting is disabled."
+                        : "You have view-only access here — commenting is disabled."}
+                    </p>
                   )}
                 </div>
               ) : (

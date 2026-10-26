@@ -73,6 +73,7 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
   const searchParams = useSearchParams();
   const { project, myCapabilities } = useProject(projectId);
   const canCreate = myCapabilities.includes("task:create");
+  const canEdit = myCapabilities.includes("task:edit");
   const [filters, setFilters] = useState<TaskFilters>(emptyFilters);
   const [swimlane, setSwimlane] = useState("none");
   const [selected, setSelected] = useState<string[]>([]);
@@ -204,7 +205,7 @@ export default function BoardPage({ params }: { params: Promise<{ projectId: str
                             </div>
                             <div className="min-h-8 flex-1 space-y-2">
                               {colTasks.map((t, i) => (
-                                <Draggable draggableId={t._id} index={i} key={t._id}>
+                                <Draggable draggableId={t._id} index={i} key={t._id} isDragDisabled={!canEdit}>
                                   {(dp, ds) => (
                                     <div
                                       ref={dp.innerRef}

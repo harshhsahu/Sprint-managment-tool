@@ -26,7 +26,9 @@ const COLUMNS = [
 
 export default function ListPage({ params }: { params: Promise<{ projectId: string }> }) {
   const { projectId } = use(params);
-  const { project } = useProject(projectId);
+  const { project, myCapabilities } = useProject(projectId);
+  const canCreate = myCapabilities.includes("task:create");
+  const canEdit = myCapabilities.includes("task:edit");
   const [filters, setFilters] = useState<TaskFilters>(emptyFilters);
   const [sort, setSort] = useState("-createdAt");
   const [groupBy, setGroupBy] = useState("none");
@@ -116,10 +118,12 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
         <FilterBar project={project} filters={filters} setFilters={setFilters} />
       </div>
 
-      <form onSubmit={quickAdd} className="mb-3 flex gap-2">
-        <input className="input !py-1.5 text-sm" placeholder="Quick add a task…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
-        <button className="btn-primary !py-1.5" disabled={!newTitle.trim()}><Plus size={14} /></button>
-      </form>
+      {canCreate && (
+        <form onSubmit={quickAdd} className="mb-3 flex gap-2">
+          <input className="input !py-1.5 text-sm" placeholder="Quick add a task…" value={newTitle} onChange={(e) => setNewTitle(e.target.value)} />
+          <button className="btn-primary !py-1.5" disabled={!newTitle.trim()}><Plus size={14} /></button>
+        </form>
+      )}
 
       {isLoading && !data ? (
         <Spinner />
@@ -166,14 +170,14 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
                     {show("title") && <td className="px-3 py-1.5 max-w-md truncate">{t.title}</td>}
                     {show("status") && (
                       <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
-                        <select className={cellSelect} value={t.status} onChange={(e) => inlinePatch(t._id, { status: e.target.value })}>
+                        <select className={cellSelect} value={t.status} disabled={!canEdit} onChange={(e) => inlinePatch(t._id, { status: e.target.value })}>
                           {statuses.map((s: Any) => <option key={s.id} value={s.id}>{s.name}</option>)}
                         </select>
                       </td>
                     )}
                     {show("priority") && (
                       <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
-                        <select className={cellSelect} value={t.priority} onChange={(e) => inlinePatch(t._id, { priority: e.target.value })}>
+                        <select className={cellSelect} value={t.priority} disabled={!canEdit} onChange={(e) => inlinePatch(t._id, { priority: e.target.value })}>
                           {PRIORITIES.map((p) => <option key={p} value={p}>{PRIORITY_META[p].label}</option>)}
                         </select>
                       </td>
@@ -182,7 +186,7 @@ export default function ListPage({ params }: { params: Promise<{ projectId: stri
                       <td className="px-3 py-1.5" onClick={(e) => e.stopPropagation()}>
                         <span className="flex items-center gap-1.5">
                           <Avatar user={t.assignee} size={18} />
-                          <select className={cellSelect} value={t.assignee?._id || ""} onChange={(e) => inlinePatch(t._id, { assignee: e.target.value || null })}>
+                          <select className={cellSelect} value={t.assignee?._id || ""} disabled={!canEdit} onChange={(e) => inlinePatch(t._id, { assignee: e.target.value || null })}>
                             <option value="">Unassigned</option>
                             {(project.members || []).map((m: Any) => <option key={m.user._id} value={m.user._id}>{m.user.name}</option>)}
                           </select>

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Task, Comment, Activity, Project } from "@/models";
-import { getProjectRole, getCapabilities, can } from "@/lib/permissions";
+import { getProjectRole, getCapabilities, can, isProjectReadOnly } from "@/lib/permissions";
 import { PRIORITIES, DEFAULT_TASK_TYPES } from "@/lib/constants";
 
 export async function GET(_req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -31,7 +31,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   ]);
 
   const myCapabilities = [...(await getCapabilities(user, String(task.project)))];
-  return json({ task, comments, activity, subtasks, myRole: role, myCapabilities });
+  const readOnly = await isProjectReadOnly(String(task.project));
+  return json({ task, comments, activity, subtasks, myRole: role, myCapabilities, readOnly });
 }
 
 const patchSchema = z.object({

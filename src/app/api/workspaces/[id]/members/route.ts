@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { withAuth, json, error, parseBody, logActivity, notify } from "@/lib/apiHelpers";
 import { Workspace, User, Project } from "@/models";
-import { getWorkspaceRole, isWorkspaceManager } from "@/lib/permissions";
+import { getWorkspaceRole, isWorkspaceManager, isWorkspaceExpired, READ_ONLY_MESSAGE } from "@/lib/permissions";
 import { ASSIGNABLE_ROLES, ROLE_LABELS } from "@/lib/constants";
 
 const addSchema = z.object({
@@ -18,6 +18,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
   const myRole = await getWorkspaceRole(user, id);
   if (!isWorkspaceManager(myRole)) return error("Only workspace owners and admins can invite members", 403);
+  if (await isWorkspaceExpired(id)) return error(READ_ONLY_MESSAGE, 403);
 
   const { data, res: bodyErr } = await parseBody(req, addSchema);
   if (bodyErr) return bodyErr;
@@ -70,6 +71,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
 
   const myRole = await getWorkspaceRole(user, id);
   if (!isWorkspaceManager(myRole)) return error("Only workspace owners and admins can change roles", 403);
+  if (await isWorkspaceExpired(id)) return error(READ_ONLY_MESSAGE, 403);
 
   const { data, res: bodyErr } = await parseBody(req, patchSchema);
   if (bodyErr) return bodyErr;
